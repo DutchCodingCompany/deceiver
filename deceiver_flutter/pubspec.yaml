@@ -19,8 +19,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  deceiver:
-    path: ../deceiver
+  deceiver: 0.2.0
 
 dev_dependencies:
   flutter_test:
