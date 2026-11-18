@@ -893,6 +893,110 @@ void main() {
     });
   });
 
+  group('baseUrl', () {
+    final realClient = MockClient(
+      (request) async => Response('real ${request.url}', 200),
+    );
+
+    test('mock paths are relative to the base URL', () async {
+      final deceiver = Deceiver(
+        baseUrl: Uri.parse('https://api.example.com/v1/'),
+      );
+      deceiver.on.get('/users/{id}', (req) => Response('mock', 200));
+      deceiver.on.get('posts', (req) => Response('posts', 200));
+      final client = deceiver.client(realClient);
+
+      final users = await client.get(
+        Uri.parse('https://api.example.com/v1/users/42'),
+      );
+      final posts = await client.get(
+        Uri.parse('https://api.example.com/v1/posts'),
+      );
+      final outsidePath = await client.get(
+        Uri.parse('https://api.example.com/users/42'),
+      );
+
+      expect(users.body, 'mock');
+      expect(posts.body, 'posts');
+      expect(outsidePath.body, startsWith('real'));
+      expect(deceiver.registrations.first.description, 'GET /users/{id}');
+    });
+
+    test(
+      'other hosts, schemes and ports always go to the real client',
+      () async {
+        final deceiver = Deceiver(
+          baseUrl: Uri.parse('https://api.example.com'),
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        deceiver.on.get('/users', (req) => Response('mock', 200));
+        final client = deceiver.client(realClient);
+
+        for (final url in [
+          'https://analytics.example.com/users',
+          'http://api.example.com/users',
+          'https://api.example.com:8443/users',
+        ]) {
+          final response = await client.get(Uri.parse(url));
+          expect(response.body, 'real $url');
+        }
+
+        expect(
+          (await client.get(Uri.parse('https://api.example.com:443/users')))
+              .body,
+          'mock',
+        );
+        await expectLater(
+          client.get(Uri.parse('https://api.example.com/unknown')),
+          throwsA(isA<DeceiverException>()),
+        );
+      },
+    );
+
+    test('scenario mocks are relative to the base URL too', () async {
+      final deceiver = Deceiver(baseUrl: Uri.parse('https://x.com/api'));
+      deceiver.scenario('s', (on) {
+        on.get('/users', (req) => Response('scenario', 200));
+      });
+      deceiver.activateScenario('s');
+
+      final response = await deceiver
+          .client(realClient)
+          .get(Uri.parse('https://x.com/api/users'));
+
+      expect(response.body, 'scenario');
+    });
+
+    test('appliesTo', () {
+      final deceiver = Deceiver(baseUrl: Uri.parse('https://x.com/api'));
+
+      expect(deceiver.appliesTo(Uri.parse('https://x.com/api')), isTrue);
+      expect(deceiver.appliesTo(Uri.parse('https://x.com/api/a?b=c')), isTrue);
+      expect(deceiver.appliesTo(Uri.parse('https://x.com/apis')), isFalse);
+      expect(deceiver.appliesTo(Uri.parse('https://x.com/')), isFalse);
+      expect(Deceiver().appliesTo(Uri.parse('https://any.com/')), isTrue);
+    });
+
+    test('rejects an invalid base URL', () {
+      for (final url in ['/api', 'https://x.com/api?a=b', 'https://x.com#a']) {
+        expect(
+          () => Deceiver(baseUrl: Uri.parse(url)),
+          throwsArgumentError,
+          reason: url,
+        );
+      }
+    });
+
+    test('toPrettyPrintedString shows the base URL', () {
+      final deceiver = Deceiver(baseUrl: Uri.parse('https://x.com/api'));
+
+      expect(
+        deceiver.toPrettyPrintedString(),
+        startsWith('Base URL: https://x.com/api'),
+      );
+    });
+  });
+
   group('Sequential responses', () {
     test('returns responses in order', () async {
       final deceiver = Deceiver();

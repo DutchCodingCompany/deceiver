@@ -18,15 +18,29 @@ import 'path_template.dart';
 /// ```
 class DeceiverBuilder {
   /// Creates a builder that adds mocks to the given [Deceiver]'s base list.
-  DeceiverBuilder(Deceiver deceiver) : _addMock = deceiver.add;
+  ///
+  /// Paths are relative to [Deceiver.baseUrl].
+  DeceiverBuilder(Deceiver deceiver)
+    : _addMock = deceiver.add,
+      _basePath = _basePathOf(deceiver.baseUrl);
 
   /// Creates a builder that appends mocks to the given [target] list.
   ///
   /// Used internally by [Deceiver.scenario] to populate a scenario's mock
-  /// list.
-  DeceiverBuilder.forList(List<DeceiverData> target) : _addMock = target.add;
+  /// list. Paths are relative to the path of [baseUrl], if given.
+  DeceiverBuilder.forList(List<DeceiverData> target, {Uri? baseUrl})
+    : _addMock = target.add,
+      _basePath = _basePathOf(baseUrl);
 
   final void Function(DeceiverData data) _addMock;
+
+  /// The path of the base URL without a trailing slash, or an empty string.
+  final String _basePath;
+
+  static String _basePathOf(Uri? baseUrl) {
+    final path = baseUrl?.path ?? '';
+    return path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+  }
 
   void _on(
     String description,
@@ -46,7 +60,11 @@ class DeceiverBuilder {
     String path,
     DeceiverResponseBuilder responseBuilder,
   ) {
-    final template = PathTemplate(path);
+    final template = PathTemplate(
+      _basePath.isEmpty || path.startsWith('/')
+          ? '$_basePath$path'
+          : '$_basePath/$path',
+    );
     _on(
       '$method $path',
       matchAll([

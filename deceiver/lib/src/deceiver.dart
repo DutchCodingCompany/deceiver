@@ -53,7 +53,38 @@ class DeceiverOptions {
 /// // errorResponse.statusCode == 500
 /// ```
 class Deceiver {
-  Deceiver({this.options = const DeceiverOptions()});
+  /// Creates a [Deceiver].
+  ///
+  /// When [baseUrl] is given, only requests to that scheme, host and port,
+  /// and under its path, are handled. Paths of mocks registered via [on] and
+  /// [scenario] are relative to the path of [baseUrl]. Other requests always
+  /// go to the real HTTP client, even in strict mode, and are not recorded.
+  ///
+  /// ```dart
+  /// final deceiver = Deceiver(baseUrl: Uri.parse('https://api.example.com/v1'));
+  /// deceiver.on.get('/users', jsonResponse(body: [])); // GET /v1/users
+  /// ```
+  ///
+  /// Throws an [ArgumentError] if [baseUrl] has no scheme or host, or has a
+  /// query or fragment.
+  Deceiver({this.options = const DeceiverOptions(), this.baseUrl}) {
+    final url = baseUrl;
+    if (url != null &&
+        (!url.hasScheme ||
+            url.host.isEmpty ||
+            url.hasQuery ||
+            url.hasFragment)) {
+      throw ArgumentError.value(
+        url,
+        'baseUrl',
+        'Must have a scheme and host, and no query or fragment',
+      );
+    }
+  }
+
+  /// The URL that all mocks are relative to, or `null` to handle requests to
+  /// any host.
+  final Uri? baseUrl;
 
   /// Configuration options controlling mock behavior.
   ///
@@ -89,6 +120,28 @@ class Deceiver {
   /// ```
   DeceiverBuilder get on => DeceiverBuilder(this);
 
+  /// Whether requests to [url] are handled by this [Deceiver].
+  ///
+  /// Always `true` without a [baseUrl]. Otherwise [url] must have the same
+  /// scheme, host and port as [baseUrl], and a path under its path.
+  bool appliesTo(Uri url) {
+    final base = baseUrl;
+    if (base == null) return true;
+    if (url.scheme != base.scheme ||
+        url.host != base.host ||
+        url.port != base.port) {
+      return false;
+    }
+
+    final baseSegments = base.pathSegments.where((s) => s.isNotEmpty).toList();
+    final segments = url.pathSegments;
+    if (segments.length < baseSegments.length) return false;
+    for (var i = 0; i < baseSegments.length; i++) {
+      if (segments[i] != baseSegments[i]) return false;
+    }
+    return true;
+  }
+
   /// Registers a mock definition directly to the base mock list.
   void add(DeceiverData data) {
     _data.add(data);
@@ -122,7 +175,7 @@ class Deceiver {
   /// ```
   void scenario(String name, void Function(DeceiverBuilder on) configure) {
     final scenarioMocks = <DeceiverData>[];
-    final builder = DeceiverBuilder.forList(scenarioMocks);
+    final builder = DeceiverBuilder.forList(scenarioMocks, baseUrl: baseUrl);
     configure(builder);
     _scenarios[name] = scenarioMocks;
   }
@@ -175,9 +228,10 @@ class Deceiver {
   /// 1. If a scenario is active, its mocks are checked first.
   /// 2. Base mocks are checked next.
   ///
-  /// Returns `null` if [enabled] is `false` or no registered mock matches.
+  /// Returns `null` if [enabled] is `false`, the request is outside
+  /// [baseUrl] or no registered mock matches.
   Future<Response?> respond(Request request) async {
-    if (!enabled) return null;
+    if (!enabled || !appliesTo(request.url)) return null;
 
     // 1. Check active scenario mocks first.
     if (_activeScenario != null) {
@@ -206,6 +260,11 @@ class Deceiver {
   /// Includes base mocks, scenario definitions, and the active scenario.
   String toPrettyPrintedString() {
     final buffer = StringBuffer();
+
+    if (baseUrl != null) {
+      buffer.writeln('Base URL: $baseUrl');
+      buffer.writeln();
+    }
 
     // Active scenario
     if (_activeScenario != null) {
