@@ -26,13 +26,17 @@ jobs:
             pub-command: get
             check-format: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           flutter-version: ${{ matrix.flutter-version }}
           cache: true
+
+      # Resolve everything first: without a lock file, `pub downgrade <names>`
+      # would also downgrade all other packages.
+      - run: flutter pub get
 
       - run: flutter pub ${{ matrix.pub-command }}
 
