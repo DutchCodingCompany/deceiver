@@ -40,7 +40,7 @@ class DeceiverController extends ChangeNotifier {
 
   set onlyAllowMocks(bool value) {
     if (deceiver.options.onlyAllowMocks == value) return;
-    deceiver.options = DeceiverOptions(onlyAllowMocks: value);
+    deceiver.options = deceiver.options.copyWith(onlyAllowMocks: value);
     notifyListeners();
   }
 

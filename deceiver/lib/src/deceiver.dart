@@ -21,6 +21,10 @@ class DeceiverOptions {
   /// Has no effect while [Deceiver.enabled] is `false`: then every request
   /// goes to the real HTTP client.
   final bool onlyAllowMocks;
+
+  /// Returns a copy of these options with the given fields replaced.
+  DeceiverOptions copyWith({bool? onlyAllowMocks}) =>
+      DeceiverOptions(onlyAllowMocks: onlyAllowMocks ?? this.onlyAllowMocks);
 }
 
 /// A fake HTTP response orchestrator.
@@ -150,7 +154,7 @@ class Deceiver {
   String? get activeScenario => _activeScenario;
 
   /// The list of defined scenario names.
-  List<String> get scenarios => List.unmodifiable(_scenarios.keys.toList());
+  List<String> get scenarios => List.unmodifiable(_scenarios.keys);
 
   /// Returns the mock definitions for the given [scenarioName].
   ///

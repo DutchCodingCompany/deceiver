@@ -96,9 +96,10 @@ DeceiverResponseBuilder sequentialResponse(
     );
   }
 
+  final copy = List.of(builders);
   var index = 0;
   return (request) {
-    final builder = builders[index % builders.length];
+    final builder = copy[index % copy.length];
     index++;
     return builder(request);
   };
@@ -127,9 +128,10 @@ DeceiverResponseBuilder randomResponse(
     );
   }
 
+  final copy = List.of(builders);
   final rng = random ?? Random();
   return (request) {
-    final builder = builders[rng.nextInt(builders.length)];
+    final builder = copy[rng.nextInt(copy.length)];
     return builder(request);
   };
 }

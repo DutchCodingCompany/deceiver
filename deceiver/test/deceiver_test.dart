@@ -822,6 +822,13 @@ void main() {
       expect(output, contains('error (active):'));
     });
 
+    test('DeceiverOptions.copyWith keeps fields that are not passed', () {
+      const options = DeceiverOptions(onlyAllowMocks: true);
+
+      expect(options.copyWith().onlyAllowMocks, isTrue);
+      expect(options.copyWith(onlyAllowMocks: false).onlyAllowMocks, isFalse);
+    });
+
     test('registrations returns unmodifiable list', () {
       final deceiver = Deceiver();
       deceiver.on.get('/users', (req) => Response('', 200));
@@ -934,6 +941,17 @@ void main() {
       expect(() => sequentialResponse([]), throwsA(isA<ArgumentError>()));
     });
 
+    test('is not affected by later changes to the list', () async {
+      final builders = <DeceiverResponseBuilder>[(req) => Response('a', 200)];
+      final builder = sequentialResponse(builders);
+      builders.clear();
+
+      final response = await builder(
+        Request('GET', Uri.parse('https://x.com')),
+      );
+      expect(response.body, 'a');
+    });
+
     test('works with a single builder', () async {
       final deceiver = Deceiver();
       deceiver.on.get(
@@ -1005,6 +1023,17 @@ void main() {
 
     test('throws on empty list', () {
       expect(() => randomResponse([]), throwsA(isA<ArgumentError>()));
+    });
+
+    test('is not affected by later changes to the list', () async {
+      final builders = <DeceiverResponseBuilder>[(req) => Response('a', 200)];
+      final builder = randomResponse(builders);
+      builders.clear();
+
+      final response = await builder(
+        Request('GET', Uri.parse('https://x.com')),
+      );
+      expect(response.body, 'a');
     });
 
     test('works with a single builder', () async {
