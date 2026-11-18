@@ -68,6 +68,22 @@ void main() {
         expect(deceiver.registrations.first.description, 'search q=dart');
       });
     });
+
+    test('public types can be used to share mock setups', () async {
+      void registerUserMocks(DeceiverBuilder on) {
+        on.get('/users', (req) => Response('users', 200));
+      }
+
+      final deceiver = Deceiver();
+      registerUserMocks(deceiver.on);
+      deceiver.scenario('same', registerUserMocks);
+
+      final DeceiverClient client = deceiver.client();
+      final response = await client.get(Uri.parse('https://example.com/users'));
+
+      expect(response.body, 'users');
+      expect(deceiver.scenarioRegistrations('same'), hasLength(1));
+    });
   });
 
   group('DeceiverClient', () {
