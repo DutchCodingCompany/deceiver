@@ -3,7 +3,7 @@ description: >-
   Configure and provide fake HTTP responses for Dart's package:http Client.
   Intercept requests with URI templates, toggle mocks at runtime,
   and passthrough unmatched calls.
-version: 0.2.0
+version: 0.3.0
 repository: https://github.com/DutchCodingCompany/deceiver
 resolution: workspace
 topics:
@@ -13,12 +13,12 @@ topics:
   - fake
 
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.13.0
 
 dependencies:
   http: ^1.5.0
   uri: ^1.0.0
 
 dev_dependencies:
-  lints: ^5.0.0
+  lints: ^6.1.0
   test: ^1.25.6
