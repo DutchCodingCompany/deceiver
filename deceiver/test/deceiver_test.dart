@@ -874,6 +874,7 @@ void main() {
 
       expect(options.copyWith().onlyAllowMocks, isTrue);
       expect(options.copyWith(onlyAllowMocks: false).onlyAllowMocks, isFalse);
+      expect(options.copyWith(onlyAllowMocks: false).maxRecordedRequests, 100);
     });
 
     test('registrations returns unmodifiable list', () {
@@ -890,6 +891,111 @@ void main() {
         ),
         throwsA(isA<UnsupportedError>()),
       );
+    });
+  });
+
+  group('recorded requests', () {
+    test('records requests with the mock that answered them', () async {
+      final deceiver = Deceiver();
+      deceiver.on.post('/users', (req) => Response('created', 201));
+      final client = deceiver.client(
+        MockClient((request) async => Response('real', 200)),
+      );
+
+      await client.post(Uri.parse('https://x.com/users'), body: 'Bilbo');
+      await client.get(Uri.parse('https://x.com/other'));
+
+      final [first, second] = deceiver.requests;
+      expect(first.request.method, 'POST');
+      expect(first.request.body, 'Bilbo');
+      expect(first.mock, same(deceiver.registrations.single));
+      expect(second.request.url.path, '/other');
+      expect(second.mock, isNull);
+    });
+
+    test('records unmatched requests in strict mode', () async {
+      final deceiver = Deceiver(
+        options: const DeceiverOptions(onlyAllowMocks: true),
+      );
+
+      await expectLater(
+        deceiver.client().get(Uri.parse('https://x.com/unknown')),
+        throwsA(isA<DeceiverException>()),
+      );
+
+      expect(deceiver.requests.single.mock, isNull);
+    });
+
+    test('does not record while disabled', () async {
+      final deceiver = Deceiver()..enabled = false;
+      final client = deceiver.client(
+        MockClient((request) async => Response('real', 200)),
+      );
+
+      await client.get(Uri.parse('https://x.com/users'));
+
+      expect(deceiver.requests, isEmpty);
+    });
+
+    test('keeps at most maxRecordedRequests, dropping the oldest', () async {
+      final deceiver = Deceiver(
+        options: const DeceiverOptions(maxRecordedRequests: 2),
+      );
+      deceiver.on.get('/{n}', (req) => Response('', 200));
+      final client = deceiver.client();
+
+      for (final n in ['1', '2', '3']) {
+        await client.get(Uri.parse('https://x.com/$n'));
+      }
+
+      expect(deceiver.requests.map((r) => r.request.url.path), ['/2', '/3']);
+    });
+
+    test('records nothing with maxRecordedRequests 0', () async {
+      final deceiver = Deceiver(
+        options: const DeceiverOptions(maxRecordedRequests: 0),
+      );
+      deceiver.on.get('/users', (req) => Response('', 200));
+
+      await deceiver.client().get(Uri.parse('https://x.com/users'));
+
+      expect(deceiver.requests, isEmpty);
+    });
+
+    test('clearRequests removes the recorded requests', () async {
+      final deceiver = Deceiver();
+      deceiver.on.get('/users', (req) => Response('', 200));
+      await deceiver.client().get(Uri.parse('https://x.com/users'));
+
+      deceiver.clearRequests();
+
+      expect(deceiver.requests, isEmpty);
+    });
+  });
+
+  group('reset', () {
+    test('removes mocks, scenarios and requests but keeps settings', () async {
+      final deceiver = Deceiver(
+        options: const DeceiverOptions(onlyAllowMocks: true),
+      );
+      deceiver.on.get('/users', (req) => Response('', 200));
+      deceiver.scenario('s', (on) => on.get('/posts', jsonResponse()));
+      deceiver.activateScenario('s');
+      final client = deceiver.client();
+      await client.get(Uri.parse('https://x.com/users'));
+
+      deceiver.reset();
+
+      expect(deceiver.registrations, isEmpty);
+      expect(deceiver.scenarios, isEmpty);
+      expect(deceiver.activeScenario, isNull);
+      expect(deceiver.requests, isEmpty);
+      expect(deceiver.options.onlyAllowMocks, isTrue);
+      expect(deceiver.enabled, isTrue);
+
+      // Existing clients use the new mocks.
+      deceiver.on.get('/new', (req) => Response('new', 200));
+      expect((await client.get(Uri.parse('https://x.com/new'))).body, 'new');
     });
   });
 

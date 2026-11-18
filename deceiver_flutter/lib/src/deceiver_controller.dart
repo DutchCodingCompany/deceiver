@@ -52,6 +52,12 @@ class DeceiverController extends ChangeNotifier {
   /// The list of registered base mock definitions.
   List<DeceiverData> get registrations => deceiver.registrations;
 
+  /// Removes all mocks, scenarios and recorded requests, see [Deceiver.reset].
+  void reset() {
+    deceiver.reset();
+    notifyListeners();
+  }
+
   /// Sets the [DeceiverData.isEnabled] flag of [mock].
   ///
   /// Works for base mocks and scenario mocks alike.

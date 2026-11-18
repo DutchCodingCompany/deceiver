@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:http/http.dart';
 
@@ -9,7 +10,10 @@ import 'deceiver_exception.dart';
 
 /// Configuration options for a [Deceiver] instance.
 class DeceiverOptions {
-  const DeceiverOptions({this.onlyAllowMocks = false});
+  const DeceiverOptions({
+    this.onlyAllowMocks = false,
+    this.maxRecordedRequests = 100,
+  });
 
   /// When `true`, requests that don't match any registered mock throw a
   /// [DeceiverException] with a descriptive message listing all registered
@@ -22,9 +26,17 @@ class DeceiverOptions {
   /// goes to the real HTTP client.
   final bool onlyAllowMocks;
 
+  /// The maximum number of requests kept in [Deceiver.requests]. When the
+  /// limit is reached, the oldest request is dropped. Set to `0` to not
+  /// record requests at all.
+  final int maxRecordedRequests;
+
   /// Returns a copy of these options with the given fields replaced.
-  DeceiverOptions copyWith({bool? onlyAllowMocks}) =>
-      DeceiverOptions(onlyAllowMocks: onlyAllowMocks ?? this.onlyAllowMocks);
+  DeceiverOptions copyWith({bool? onlyAllowMocks, int? maxRecordedRequests}) =>
+      DeceiverOptions(
+        onlyAllowMocks: onlyAllowMocks ?? this.onlyAllowMocks,
+        maxRecordedRequests: maxRecordedRequests ?? this.maxRecordedRequests,
+      );
 }
 
 /// A fake HTTP response orchestrator.
@@ -101,6 +113,7 @@ class Deceiver {
   final List<DeceiverData> _data = [];
   final Map<String, List<DeceiverData>> _scenarios = {};
   String? _activeScenario;
+  final _requests = ListQueue<DeceiverRecordedRequest>();
 
   /// Creates a [DeceiverClient] that intercepts HTTP requests.
   ///
@@ -149,6 +162,47 @@ class Deceiver {
 
   /// Returns the list of base mock definitions.
   List<DeceiverData> get registrations => List.unmodifiable(_data);
+
+  /// Removes all base mocks, scenarios and recorded requests, and
+  /// deactivates the active scenario.
+  ///
+  /// [options] and [enabled] are kept. Clients created with [client] keep
+  /// working with the new mocks.
+  void reset() {
+    _data.clear();
+    _scenarios.clear();
+    _activeScenario = null;
+    _requests.clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recorded requests
+  // ---------------------------------------------------------------------------
+
+  /// The requests this [Deceiver] handled, oldest first.
+  ///
+  /// Each entry has the mock that answered it, or `null` if no mock matched.
+  /// Keeps at most [DeceiverOptions.maxRecordedRequests] requests. Requests
+  /// sent while [enabled] is `false` or outside [baseUrl] are not recorded.
+  ///
+  /// ```dart
+  /// final posts = deceiver.requests.where(
+  ///   (r) => r.request.method == 'POST' && r.request.url.path == '/users',
+  /// );
+  /// expect(posts, hasLength(1));
+  /// ```
+  List<DeceiverRecordedRequest> get requests => List.unmodifiable(_requests);
+
+  /// Removes all recorded [requests].
+  void clearRequests() => _requests.clear();
+
+  void _record(DeceiverRecordedRequest recorded) {
+    final max = options.maxRecordedRequests;
+    _requests.addLast(recorded);
+    while (_requests.length > max) {
+      _requests.removeFirst();
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Scenarios
@@ -233,25 +287,16 @@ class Deceiver {
   Future<Response?> respond(Request request) async {
     if (!enabled || !appliesTo(request.url)) return null;
 
-    // 1. Check active scenario mocks first.
-    if (_activeScenario != null) {
-      final scenarioMocks = _scenarios[_activeScenario];
-      if (scenarioMocks != null) {
-        for (final entry in scenarioMocks) {
-          if (entry.isEnabled && entry.requestMatcher(request)) {
-            return await entry.responseBuilder(request);
-          }
-        }
-      }
-    }
+    final mock = _findMock(request);
+    _record(DeceiverRecordedRequest(request: request, mock: mock));
+    return mock == null ? null : await mock.responseBuilder(request);
+  }
 
-    // 2. Fall back to base mocks.
-    for (final entry in _data) {
-      if (entry.isEnabled && entry.requestMatcher(request)) {
-        return await entry.responseBuilder(request);
-      }
+  DeceiverData? _findMock(Request request) {
+    final candidates = [..._scenarios[_activeScenario] ?? const [], ..._data];
+    for (final entry in candidates) {
+      if (entry.isEnabled && entry.requestMatcher(request)) return entry;
     }
-
     return null;
   }
 

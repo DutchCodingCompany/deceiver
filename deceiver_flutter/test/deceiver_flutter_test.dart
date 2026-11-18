@@ -85,6 +85,16 @@ void main() {
       expect(notified, isTrue);
     });
 
+    test('reset clears the deceiver and notifies listeners', () {
+      var notified = false;
+      controller.addListener(() => notified = true);
+
+      controller.reset();
+
+      expect(controller.registrations, isEmpty);
+      expect(notified, isTrue);
+    });
+
     test('notifies listeners on toggleMock', () {
       var notified = false;
       controller.addListener(() => notified = true);

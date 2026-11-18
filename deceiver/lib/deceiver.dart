@@ -18,7 +18,8 @@ library;
 export 'src/deceiver.dart';
 export 'src/deceiver_builder.dart';
 export 'src/deceiver_client.dart';
-export 'src/deceiver_data.dart' show DeceiverData, DeceiverResponseBuilder;
+export 'src/deceiver_data.dart'
+    show DeceiverData, DeceiverRecordedRequest, DeceiverResponseBuilder;
 export 'src/deceiver_exception.dart';
 export 'src/deceiver_request_matchers.dart';
 export 'src/deceiver_response_helpers.dart';

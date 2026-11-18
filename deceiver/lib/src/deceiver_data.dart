@@ -43,3 +43,16 @@ class DeceiverData {
   /// without removing the registration.
   bool isEnabled;
 }
+
+/// A request handled by a `Deceiver`, see `Deceiver.requests`.
+class DeceiverRecordedRequest {
+  DeceiverRecordedRequest({required this.request, required this.mock});
+
+  /// The request. For streamed and multipart requests this is a copy with
+  /// the body read into memory.
+  final Request request;
+
+  /// The mock that answered the request, or `null` if no mock matched. The
+  /// request then went to the real HTTP client, or failed in strict mode.
+  final DeceiverData? mock;
+}
