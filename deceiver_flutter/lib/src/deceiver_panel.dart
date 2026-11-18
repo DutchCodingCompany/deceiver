@@ -1,11 +1,13 @@
-import 'package:flutter/material.dart';
+import 'package:deceiver/deceiver.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'deceiver_controller.dart';
 
 /// A Material-styled control panel for managing [Deceiver] mock settings.
 ///
 /// Displays global toggles (enabled, onlyAllowMocks), a scenario selector,
-/// and a scrollable list of registered mocks with individual toggle switches.
+/// the mocks of the active scenario and a scrollable list of base mocks,
+/// each with an individual toggle switch.
 ///
 /// Embed this widget in a debug drawer, settings page, or any route:
 ///
@@ -26,105 +28,101 @@ class DeceiverPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        final registrations = controller.registrations;
-        final scenarios = controller.scenarios;
-        final activeScenario = controller.activeScenario;
+    // The panel brings its own Material, so it also works in apps that still
+    // use package:flutter/material.dart, which has a separate Material type.
+    return Material(
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final registrations = controller.registrations;
+          final scenarios = controller.scenarios;
+          final activeScenario = controller.activeScenario;
+          final scenarioRegistrations = controller.activeScenarioRegistrations;
 
-        return ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: [
-            // -- Global Settings --
-            const _SectionHeader(title: 'Global Settings'),
-            SwitchListTile(
-              title: const Text('Mocks enabled'),
-              subtitle: const Text(
-                'When disabled, all requests go to the real HTTP client',
+          return ListView(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: [
+              // -- Global Settings --
+              const _SectionHeader(title: 'Global Settings'),
+              SwitchListTile(
+                title: const Text('Mocks enabled'),
+                subtitle: const Text(
+                  'When disabled, all requests go to the real HTTP client',
+                ),
+                value: controller.enabled,
+                onChanged: (value) => controller.enabled = value,
               ),
-              value: controller.enabled,
-              onChanged: (value) => controller.enabled = value,
-            ),
-            SwitchListTile(
-              title: const Text('Only allow mocks'),
-              subtitle: const Text(
-                'When enabled, unmatched requests throw an error',
+              SwitchListTile(
+                title: const Text('Only allow mocks'),
+                subtitle: const Text(
+                  'When enabled, unmatched requests throw an error',
+                ),
+                value: controller.onlyAllowMocks,
+                onChanged: (value) => controller.onlyAllowMocks = value,
               ),
-              value: controller.onlyAllowMocks,
-              onChanged: (value) => controller.onlyAllowMocks = value,
-            ),
 
-            // -- Scenarios --
-            if (scenarios.isNotEmpty) ...[
-              const Divider(),
-              _SectionHeader(
-                title: 'Scenarios',
-                trailing: Text(
-                  '${scenarios.length}',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+              // -- Scenarios --
+              if (scenarios.isNotEmpty) ...[
+                const Divider(),
+                _SectionHeader(title: 'Scenarios', count: scenarios.length),
+                RadioGroup<String?>(
+                  groupValue: activeScenario,
+                  onChanged: (name) => name == null
+                      ? controller.deactivateScenario()
+                      : controller.activateScenario(name),
+                  child: Column(
+                    children: [
+                      const RadioListTile<String?>(
+                        value: null,
+                        title: Text('None (base only)'),
+                      ),
+                      for (final name in scenarios)
+                        RadioListTile<String?>(
+                          value: name,
+                          title: Text(name),
+                          // Tapping the active scenario deactivates it.
+                          toggleable: true,
+                        ),
+                    ],
                   ),
                 ),
-              ),
-              _ScenarioListTile(
-                name: 'None (base only)',
-                isActive: activeScenario == null,
-                onTap: () => controller.deactivateScenario(),
-              ),
-              for (final name in scenarios)
-                _ScenarioListTile(
-                  name: name,
-                  isActive: activeScenario == name,
-                  onTap: () {
-                    if (activeScenario == name) {
-                      controller.deactivateScenario();
-                    } else {
-                      controller.activateScenario(name);
-                    }
-                  },
-                ),
-            ],
+              ],
 
-            // -- Registered Mocks --
-            const Divider(),
-            _SectionHeader(
-              title: 'Registered Mocks',
-              trailing: Text(
-                '${registrations.length}',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+              // -- Scenario Mocks --
+              if (activeScenario != null) ...[
+                const Divider(),
+                _SectionHeader(
+                  title: 'Scenario Mocks: $activeScenario',
+                  count: scenarioRegistrations.length,
                 ),
-              ),
-            ),
-            if (registrations.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                child: Text(
-                  'No mocks registered.',
-                  style: TextStyle(fontStyle: FontStyle.italic),
-                ),
-              )
-            else
-              for (var i = 0; i < registrations.length; i++)
-                _MockListTile(
-                  description: registrations[i].description,
-                  isEnabled: registrations[i].isEnabled,
-                  onChanged: (value) =>
-                      controller.toggleMock(i, enabled: value),
-                ),
-          ],
-        );
-      },
+                if (scenarioRegistrations.isEmpty)
+                  const _EmptyState('No mocks in this scenario.')
+                else
+                  for (final mock in scenarioRegistrations)
+                    _MockListTile(mock: mock, controller: controller),
+              ],
+
+              // -- Base Mocks --
+              const Divider(),
+              _SectionHeader(title: 'Base Mocks', count: registrations.length),
+              if (registrations.isEmpty)
+                const _EmptyState('No mocks registered.')
+              else
+                for (final mock in registrations)
+                  _MockListTile(mock: mock, controller: controller),
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.trailing});
+  const _SectionHeader({required this.title, this.count});
 
   final String title;
-  final Widget? trailing;
+  final int? count;
 
   @override
   Widget build(BuildContext context) {
@@ -134,76 +132,60 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
+          Expanded(
+            child: Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          if (trailing != null) ...[const Spacer(), trailing!],
+          if (count != null)
+            Text(
+              '$count',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _ScenarioListTile extends StatelessWidget {
-  const _ScenarioListTile({
-    required this.name,
-    required this.isActive,
-    required this.onTap,
-  });
+class _EmptyState extends StatelessWidget {
+  const _EmptyState(this.message);
 
-  final String name;
-  final bool isActive;
-  final VoidCallback onTap;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return ListTile(
-      leading: Icon(
-        isActive ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-        color: isActive
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onSurface.withValues(alpha: 0.38),
-      ),
-      title: Text(
-        name,
-        style: TextStyle(
-          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-          color: isActive
-              ? theme.colorScheme.primary
-              : theme.colorScheme.onSurface,
-        ),
-      ),
-      onTap: onTap,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Text(message, style: const TextStyle(fontStyle: FontStyle.italic)),
     );
   }
 }
 
 class _MockListTile extends StatelessWidget {
-  const _MockListTile({
-    required this.description,
-    required this.isEnabled,
-    required this.onChanged,
-  });
+  const _MockListTile({required this.mock, required this.controller});
 
-  final String description;
-  final bool isEnabled;
-  final ValueChanged<bool> onChanged;
+  final DeceiverData mock;
+  final DeceiverController controller;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isEnabled = mock.isEnabled;
 
     return SwitchListTile(
       title: Text(
-        description,
+        mock.description,
         style: TextStyle(
           fontFamily: 'monospace',
+          // 'monospace' only exists on Android.
+          fontFamilyFallback: const ['Menlo', 'Courier'],
           color: isEnabled
               ? theme.colorScheme.onSurface
               : theme.colorScheme.onSurface.withValues(alpha: 0.5),
@@ -217,7 +199,7 @@ class _MockListTile extends StatelessWidget {
             : theme.colorScheme.onSurface.withValues(alpha: 0.38),
       ),
       value: isEnabled,
-      onChanged: onChanged,
+      onChanged: (value) => controller.toggleMock(mock, enabled: value),
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:deceiver/deceiver.dart';
 import 'package:deceiver_flutter/deceiver_flutter.dart';
-import 'package:flutter/material.dart';
+// ignore: deprecated_member_use
+import 'package:flutter/material.dart' as legacy;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   group('DeceiverController', () {
@@ -42,20 +44,16 @@ void main() {
       expect(controller.registrations[1].description, 'POST /users');
     });
 
-    test('toggleMock updates isEnabled on the correct mock', () {
-      expect(controller.registrations[0].isEnabled, isTrue);
+    test('toggleMock updates isEnabled on the given mock', () {
+      final mock = controller.registrations[0];
+      expect(mock.isEnabled, isTrue);
 
-      controller.toggleMock(0, enabled: false);
+      controller.toggleMock(mock, enabled: false);
       expect(deceiver.registrations[0].isEnabled, isFalse);
+      expect(deceiver.registrations[1].isEnabled, isTrue);
 
-      controller.toggleMock(0, enabled: true);
+      controller.toggleMock(mock, enabled: true);
       expect(deceiver.registrations[0].isEnabled, isTrue);
-    });
-
-    test('toggleMock ignores out-of-bounds index', () {
-      // Should not throw.
-      controller.toggleMock(-1, enabled: false);
-      controller.toggleMock(99, enabled: false);
     });
 
     test('notifies listeners on enabled change', () {
@@ -72,7 +70,10 @@ void main() {
 
       controller.enabled = true; // already true
       controller.onlyAllowMocks = false; // already false
-      controller.toggleMock(0, enabled: true); // already true
+      controller.toggleMock(
+        controller.registrations[0],
+        enabled: true,
+      ); // already true
       expect(notifyCount, 0);
     });
 
@@ -88,7 +89,7 @@ void main() {
       var notified = false;
       controller.addListener(() => notified = true);
 
-      controller.toggleMock(0, enabled: false);
+      controller.toggleMock(controller.registrations[0], enabled: false);
       expect(notified, isTrue);
     });
   });
@@ -111,6 +112,9 @@ void main() {
       );
     }
 
+    Finder switchFor(String title) =>
+        find.widgetWithText(SwitchListTile, title);
+
     testWidgets('renders global settings section', (tester) async {
       await tester.pumpWidget(buildPanel());
 
@@ -119,10 +123,10 @@ void main() {
       expect(find.text('Only allow mocks'), findsOneWidget);
     });
 
-    testWidgets('renders registered mocks section with count', (tester) async {
+    testWidgets('renders base mocks section with count', (tester) async {
       await tester.pumpWidget(buildPanel());
 
-      expect(find.text('Registered Mocks'), findsOneWidget);
+      expect(find.text('Base Mocks'), findsOneWidget);
       expect(find.text('3'), findsOneWidget); // mock count
     });
 
@@ -152,12 +156,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(buildPanel());
-
-      // Find the Switch for "Mocks enabled" -- it's the first SwitchListTile.
-      final mocksEnabledSwitch = find.byType(Switch).first;
       expect(controller.enabled, isTrue);
 
-      await tester.tap(mocksEnabledSwitch);
+      await tester.tap(switchFor('Mocks enabled'));
       await tester.pump();
 
       expect(controller.enabled, isFalse);
@@ -167,14 +168,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(buildPanel());
-
-      // The "Only allow mocks" switch is the second SwitchListTile.
-      final switches = find.byType(Switch);
-      final onlyAllowMocksSwitch = switches.at(1);
-
       expect(controller.onlyAllowMocks, isFalse);
 
-      await tester.tap(onlyAllowMocksSwitch);
+      await tester.tap(switchFor('Only allow mocks'));
       await tester.pump();
 
       expect(controller.onlyAllowMocks, isTrue);
@@ -182,20 +178,12 @@ void main() {
 
     testWidgets('toggling a mock switch updates its isEnabled', (tester) async {
       await tester.pumpWidget(buildPanel());
-
-      // The mock switches come after the two global switches.
-      // Switch at index 2 = first mock (GET /users).
-      final switches = find.byType(Switch);
-      final firstMockSwitch = switches.at(2);
-
       expect(controller.registrations[0].isEnabled, isTrue);
 
-      await tester.tap(firstMockSwitch);
+      await tester.tap(switchFor('GET /users'));
       await tester.pump();
 
       expect(controller.registrations[0].isEnabled, isFalse);
-
-      // Subtitle should now show "Disabled".
       expect(find.text('Disabled'), findsOneWidget);
     });
 
@@ -206,7 +194,7 @@ void main() {
       expect(find.text('Enabled'), findsNWidgets(3));
 
       // Programmatically disable first mock.
-      controller.toggleMock(0, enabled: false);
+      controller.toggleMock(controller.registrations[0], enabled: false);
       await tester.pump();
 
       expect(find.text('Enabled'), findsNWidgets(2));
@@ -214,12 +202,30 @@ void main() {
     });
 
     testWidgets('disabled mock shows cancel icon', (tester) async {
-      controller.toggleMock(0, enabled: false);
+      controller.toggleMock(controller.registrations[0], enabled: false);
       await tester.pumpWidget(buildPanel());
 
       // Should have 2 check icons and 1 cancel icon.
       expect(find.byIcon(Icons.check_circle_outline), findsNWidgets(2));
       expect(find.byIcon(Icons.cancel_outlined), findsOneWidget);
+    });
+
+    testWidgets('works in an app that uses package:flutter/material.dart', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        legacy.MaterialApp(
+          home: legacy.Scaffold(body: DeceiverPanel(controller: controller)),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('GET /users'), findsOneWidget);
+
+      await tester.tap(switchFor('GET /users'));
+      await tester.pump();
+
+      expect(controller.registrations[0].isEnabled, isFalse);
     });
   });
 
@@ -257,6 +263,27 @@ void main() {
       controller.activateScenario('happy');
       controller.deactivateScenario();
       expect(controller.activeScenario, isNull);
+    });
+
+    test('activeScenarioRegistrations follows the active scenario', () {
+      expect(controller.activeScenarioRegistrations, isEmpty);
+
+      controller.activateScenario('error');
+      expect(controller.activeScenarioRegistrations, hasLength(1));
+      expect(
+        controller.activeScenarioRegistrations.first,
+        same(deceiver.scenarioRegistrations('error')!.first),
+      );
+    });
+
+    test('toggleMock works for scenario mocks', () {
+      controller.activateScenario('error');
+      final mock = controller.activeScenarioRegistrations.first;
+
+      controller.toggleMock(mock, enabled: false);
+
+      expect(deceiver.scenarioRegistrations('error')!.first.isEnabled, isFalse);
+      expect(deceiver.registrations.first.isEnabled, isTrue);
     });
 
     test('activateScenario notifies listeners', () {
@@ -305,6 +332,7 @@ void main() {
       deceiver.on.get('/users', (req) => Response('', 200));
       deceiver.scenario('happy', (on) {
         on.get('/users', jsonResponse(body: 'happy'));
+        on.get('/posts', jsonResponse(body: []));
       });
       deceiver.scenario('error', (on) {
         on.get('/users', errorResponse(500));
@@ -317,6 +345,10 @@ void main() {
         home: Scaffold(body: DeceiverPanel(controller: controller)),
       );
     }
+
+    String? selectedScenario(WidgetTester tester) => tester
+        .widget<RadioGroup<String?>>(find.byType(RadioGroup<String?>))
+        .groupValue;
 
     testWidgets('renders scenario section with header and count', (
       tester,
@@ -335,6 +367,7 @@ void main() {
       expect(find.text('None (base only)'), findsOneWidget);
       expect(find.text('happy'), findsOneWidget);
       expect(find.text('error'), findsOneWidget);
+      expect(find.byType(RadioListTile<String?>), findsNWidgets(3));
     });
 
     testWidgets('does not show scenario section when no scenarios defined', (
@@ -357,10 +390,8 @@ void main() {
     testWidgets('"None (base only)" is selected by default', (tester) async {
       await tester.pumpWidget(buildPanel());
 
-      // "None" should have the filled radio icon.
-      expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
-      // The two scenarios should have unfilled radio icons.
-      expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(2));
+      expect(selectedScenario(tester), isNull);
+      expect(find.textContaining('Scenario Mocks'), findsNothing);
     });
 
     testWidgets('tapping a scenario activates it', (tester) async {
@@ -370,10 +401,7 @@ void main() {
       await tester.pump();
 
       expect(controller.activeScenario, 'happy');
-      // "happy" should now be checked, "None" and "error" unchecked.
-      // Two checked: none is unchecked now, happy is checked.
-      expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
-      expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(2));
+      expect(selectedScenario(tester), 'happy');
     });
 
     testWidgets('tapping the active scenario deactivates it', (tester) async {
@@ -414,6 +442,33 @@ void main() {
       await tester.tap(find.text('None (base only)'));
       await tester.pump();
       expect(controller.activeScenario, isNull);
+    });
+
+    testWidgets('shows the mocks of the active scenario', (tester) async {
+      // Tall enough to show the scenario mocks and the base mocks at once.
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      controller.activateScenario('happy');
+      await tester.pumpWidget(buildPanel());
+
+      expect(find.text('Scenario Mocks: happy'), findsOneWidget);
+      expect(find.text('GET /posts'), findsOneWidget);
+      // GET /users is both a scenario mock and a base mock.
+      expect(find.text('GET /users'), findsNWidgets(2));
+    });
+
+    testWidgets('toggling a scenario mock only changes that mock', (
+      tester,
+    ) async {
+      controller.activateScenario('happy');
+      await tester.pumpWidget(buildPanel());
+
+      await tester.tap(find.widgetWithText(SwitchListTile, 'GET /posts'));
+      await tester.pump();
+
+      expect(deceiver.scenarioRegistrations('happy')![1].isEnabled, isFalse);
+      expect(deceiver.registrations.single.isEnabled, isTrue);
     });
   });
 }
