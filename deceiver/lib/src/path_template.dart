@@ -1,3 +1,33 @@
+/// Throws an [ArgumentError] if [url] can't be used as a base URL: it must
+/// have a scheme and host, and no query or fragment.
+void checkBaseUrl(Uri url, String name) {
+  if (!url.hasScheme || url.host.isEmpty || url.hasQuery || url.hasFragment) {
+    throw ArgumentError.value(
+      url,
+      name,
+      'Must have a scheme and host, and no query or fragment',
+    );
+  }
+}
+
+/// Whether [url] has the same scheme, host and port as [base], and a path
+/// under the path of [base].
+bool isUnderBaseUrl(Uri url, Uri base) {
+  if (url.scheme != base.scheme ||
+      url.host != base.host ||
+      url.port != base.port) {
+    return false;
+  }
+
+  final baseSegments = base.pathSegments.where((s) => s.isNotEmpty).toList();
+  final segments = url.pathSegments;
+  if (segments.length < baseSegments.length) return false;
+  for (var i = 0; i < baseSegments.length; i++) {
+    if (segments[i] != baseSegments[i]) return false;
+  }
+  return true;
+}
+
 /// A parsed path template such as `/users/{id}`.
 ///
 /// A `{name}` placeholder matches exactly one non-empty path segment. Every

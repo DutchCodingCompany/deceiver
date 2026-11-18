@@ -19,7 +19,8 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 - Toggle all mocks on/off at runtime with a global switch
 - Toggle individual mocks on/off without removing them
 - Path parameters -- read `{id}` values in response builders
-- Base URL -- only mock requests to your own API
+- Base URL and `on.at()` -- only mock requests to your own APIs, in every
+  environment
 - Request history -- check which requests were made, for example in tests
 - Custom request matchers for advanced matching logic
 - Async response builders for simulating delays or conditional logic
@@ -126,6 +127,59 @@ deceiver.on.get('/users', jsonResponse(body: [])); // GET /v1/users
 Requests to another scheme, host or port, or outside the base path, always
 go to the real HTTP client, even in strict mode, and are not recorded.
 Without a `baseUrl`, mocks match requests to any host.
+
+### Multiple APIs and environments
+
+Use `on.at(url)` for an API other than the `baseUrl`, and a full URL as path
+for an API with a fixed URL, such as a third-party service:
+
+```dart
+final deceiver = Deceiver(baseUrl: env.apiUrl);
+
+deceiver.on.get('/users', ...);                     // your main API
+deceiver.on.at(env.authUrl).post('/token', ...);    // a second API
+deceiver.on.get('https://maps.example.com/geocode/{query}', ...); // fixed URL
+
+deceiver.scenario('expired', (on) {
+  on.at(env.authUrl).post('/token', errorResponse(401));
+});
+```
+
+Requests to these URLs are handled by Deceiver as well: they count for
+strict mode and are recorded. Each mock only matches requests to its own
+API, so `/users` above doesn't match `https://auth.example.com/users`.
+
+Apps often have different URLs for development, acceptance and production.
+Don't hardcode those in the mocks: take them from the app's environment
+configuration, and put the registration in a function that receives that
+configuration:
+
+```dart
+void registerMocks(Deceiver deceiver, Env env) {
+  deceiver.on.get('/users', ...);
+  deceiver.on.at(env.authUrl).post('/token', ...);
+}
+
+final deceiver = Deceiver(baseUrl: env.apiUrl);
+registerMocks(deceiver, env);
+```
+
+If the app can switch environments while it runs, reset Deceiver with the
+new base URL and register the mocks again. Clients keep working:
+
+```dart
+void onEnvironmentChanged(Env env) {
+  final scenario = deceiver.activeScenario;
+
+  deceiver.reset(baseUrl: env.apiUrl);
+  registerMocks(deceiver, env);
+
+  // Optional: keep the active scenario.
+  if (scenario != null && deceiver.scenarios.contains(scenario)) {
+    deceiver.activateScenario(scenario);
+  }
+}
+```
 
 ### Response helpers
 
@@ -421,7 +475,9 @@ Requests sent while `enabled` is `false` are not recorded. Call
 ### Resetting
 
 `deceiver.reset()` removes all mocks, scenarios and recorded requests, for
-example between tests. Options, `enabled` and existing clients keep working:
+example between tests. Options, `enabled` and existing clients keep working.
+Pass `baseUrl` to change the base URL at the same time, see
+[Multiple APIs and environments](#multiple-apis-and-environments):
 
 ```dart
 tearDown(deceiver.reset);

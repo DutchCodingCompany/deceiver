@@ -7,6 +7,7 @@ import 'deceiver_builder.dart';
 import 'deceiver_client.dart';
 import 'deceiver_data.dart';
 import 'deceiver_exception.dart';
+import 'path_template.dart';
 
 /// Configuration options for a [Deceiver] instance.
 class DeceiverOptions {
@@ -68,9 +69,11 @@ class Deceiver {
   /// Creates a [Deceiver].
   ///
   /// When [baseUrl] is given, only requests to that scheme, host and port,
-  /// and under its path, are handled. Paths of mocks registered via [on] and
-  /// [scenario] are relative to the path of [baseUrl]. Other requests always
-  /// go to the real HTTP client, even in strict mode, and are not recorded.
+  /// and under its path, are handled, plus requests to the URLs of mocks
+  /// registered with `on.at()` or with a full URL as path. Paths of mocks
+  /// registered via [on] and [scenario] are relative to [baseUrl]. Other
+  /// requests always go to the real HTTP client, even in strict mode, and are
+  /// not recorded.
   ///
   /// ```dart
   /// final deceiver = Deceiver(baseUrl: Uri.parse('https://api.example.com/v1'));
@@ -79,24 +82,15 @@ class Deceiver {
   ///
   /// Throws an [ArgumentError] if [baseUrl] has no scheme or host, or has a
   /// query or fragment.
-  Deceiver({this.options = const DeceiverOptions(), this.baseUrl}) {
-    final url = baseUrl;
-    if (url != null &&
-        (!url.hasScheme ||
-            url.host.isEmpty ||
-            url.hasQuery ||
-            url.hasFragment)) {
-      throw ArgumentError.value(
-        url,
-        'baseUrl',
-        'Must have a scheme and host, and no query or fragment',
-      );
-    }
+  Deceiver({this.options = const DeceiverOptions(), Uri? baseUrl})
+    : _baseUrl = baseUrl {
+    if (baseUrl != null) checkBaseUrl(baseUrl, 'baseUrl');
   }
 
-  /// The URL that all mocks are relative to, or `null` to handle requests to
-  /// any host.
-  final Uri? baseUrl;
+  /// The URL that mocks are relative to, or `null` to handle requests to any
+  /// host. Change it with [reset].
+  Uri? get baseUrl => _baseUrl;
+  Uri? _baseUrl;
 
   /// Configuration options controlling mock behavior.
   ///
@@ -135,24 +129,18 @@ class Deceiver {
 
   /// Whether requests to [url] are handled by this [Deceiver].
   ///
-  /// Always `true` without a [baseUrl]. Otherwise [url] must have the same
-  /// scheme, host and port as [baseUrl], and a path under its path.
+  /// Always `true` without a [baseUrl]. Otherwise [url] must be under
+  /// [baseUrl], or under the [DeceiverData.baseUrl] of a registered mock
+  /// (in the base mocks or any scenario): it must have the same scheme, host
+  /// and port, and a path under its path.
   bool appliesTo(Uri url) {
     final base = baseUrl;
-    if (base == null) return true;
-    if (url.scheme != base.scheme ||
-        url.host != base.host ||
-        url.port != base.port) {
-      return false;
-    }
+    if (base == null || isUnderBaseUrl(url, base)) return true;
 
-    final baseSegments = base.pathSegments.where((s) => s.isNotEmpty).toList();
-    final segments = url.pathSegments;
-    if (segments.length < baseSegments.length) return false;
-    for (var i = 0; i < baseSegments.length; i++) {
-      if (segments[i] != baseSegments[i]) return false;
-    }
-    return true;
+    return [
+      ..._data,
+      for (final mocks in _scenarios.values) ...mocks,
+    ].any((mock) => mock.baseUrl != null && isUnderBaseUrl(url, mock.baseUrl!));
   }
 
   /// Registers a mock definition directly to the base mock list.
@@ -166,9 +154,24 @@ class Deceiver {
   /// Removes all base mocks, scenarios and recorded requests, and
   /// deactivates the active scenario.
   ///
+  /// Pass [baseUrl] to change [baseUrl], for example when the app switches
+  /// to another environment. Register the mocks again afterwards:
+  ///
+  /// ```dart
+  /// deceiver.reset(baseUrl: env.apiUrl);
+  /// registerMocks(deceiver, env);
+  /// ```
+  ///
   /// [options] and [enabled] are kept. Clients created with [client] keep
   /// working with the new mocks.
-  void reset() {
+  ///
+  /// Throws an [ArgumentError] if [baseUrl] has no scheme or host, or has a
+  /// query or fragment.
+  void reset({Uri? baseUrl}) {
+    if (baseUrl != null) {
+      checkBaseUrl(baseUrl, 'baseUrl');
+      _baseUrl = baseUrl;
+    }
     _data.clear();
     _scenarios.clear();
     _activeScenario = null;

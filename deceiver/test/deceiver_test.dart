@@ -1103,6 +1103,195 @@ void main() {
     });
   });
 
+  group('multiple APIs', () {
+    final apiUrl = Uri.parse('https://api.example.com/v1');
+    final authUrl = Uri.parse('https://auth.example.com/oauth');
+    final realClient = MockClient(
+      (request) async => Response('real ${request.url}', 200),
+    );
+
+    test('on.at registers mocks relative to another base URL', () async {
+      final deceiver = Deceiver(baseUrl: apiUrl);
+      deceiver.on.get('/users', (req) => Response('users', 200));
+      deceiver.on
+          .at(authUrl)
+          .post(
+            '/token/{type}',
+            (req) => Response('token ${req.pathParameters['type']}', 200),
+          );
+      final client = deceiver.client(realClient);
+
+      final token = await client.post(
+        Uri.parse('https://auth.example.com/oauth/token/refresh'),
+      );
+      final users = await client.get(
+        Uri.parse('https://api.example.com/v1/users'),
+      );
+
+      expect(token.body, 'token refresh');
+      expect(users.body, 'users');
+      expect(
+        deceiver.registrations.last.description,
+        'POST https://auth.example.com/oauth/token/{type}',
+      );
+      expect(deceiver.registrations.last.baseUrl, authUrl);
+      expect(deceiver.registrations.first.baseUrl, isNull);
+    });
+
+    test('mocks only match requests to their own API', () async {
+      final deceiver = Deceiver(baseUrl: apiUrl);
+      deceiver.on.get('/users', (req) => Response('api', 200));
+      deceiver.on.at(authUrl).get('/me', (req) => Response('auth', 200));
+      final client = deceiver.client(realClient);
+
+      // Same path, but under the other API.
+      final authUsers = Uri.parse('https://auth.example.com/oauth/users');
+      final apiMe = Uri.parse('https://api.example.com/v1/me');
+
+      expect((await client.get(authUsers)).body, 'real $authUsers');
+      expect((await client.get(apiMe)).body, 'real $apiMe');
+    });
+
+    test('a full URL as path matches only that origin', () async {
+      final deceiver = Deceiver(baseUrl: apiUrl);
+      deceiver.on.get(
+        'https://maps.example.com/geocode/{query}',
+        (req) => Response('geo ${req.pathParameters['query']}', 200),
+      );
+      deceiver.on.get(
+        'http://plain.example.com',
+        (req) => Response('root', 200),
+      );
+      final client = deceiver.client(realClient);
+
+      final geo = await client.get(
+        Uri.parse('https://maps.example.com/geocode/Amsterdam'),
+      );
+      final root = await client.get(Uri.parse('http://plain.example.com/'));
+      final otherScheme = Uri.parse('http://maps.example.com/geocode/x');
+
+      expect(geo.body, 'geo Amsterdam');
+      expect(root.body, 'root');
+      expect((await client.get(otherScheme)).body, 'real $otherScheme');
+      expect(
+        deceiver.registrations.first.description,
+        'GET https://maps.example.com/geocode/{query}',
+      );
+    });
+
+    test('a full URL works without a Deceiver baseUrl too', () async {
+      final deceiver = Deceiver();
+      deceiver.on.get(
+        'https://maps.example.com/geo',
+        (req) => Response('', 204),
+      );
+      final client = deceiver.client(realClient);
+
+      final other = Uri.parse('https://other.example.com/geo');
+      expect(
+        (await client.get(Uri.parse('https://maps.example.com/geo')))
+            .statusCode,
+        204,
+      );
+      expect((await client.get(other)).body, 'real $other');
+    });
+
+    test('strict mode applies to every registered API', () async {
+      final deceiver = Deceiver(
+        baseUrl: apiUrl,
+        options: const DeceiverOptions(onlyAllowMocks: true),
+      );
+      deceiver.scenario('s', (on) {
+        on.at(authUrl).post('/token', (req) => Response('', 200));
+      });
+      final client = deceiver.client(realClient);
+
+      await expectLater(
+        client.get(Uri.parse('https://auth.example.com/oauth/unknown')),
+        throwsA(isA<DeceiverException>()),
+      );
+      final outside = Uri.parse('https://auth.example.com/other');
+      expect((await client.get(outside)).body, 'real $outside');
+      expect(
+        deceiver.appliesTo(Uri.parse('https://auth.example.com/oauth')),
+        isTrue,
+      );
+    });
+
+    test('on.at works in scenarios', () async {
+      final deceiver = Deceiver(baseUrl: apiUrl);
+      deceiver.on.at(authUrl).post('/token', (req) => Response('ok', 200));
+      deceiver.scenario('expired', (on) {
+        on.at(authUrl).post('/token', errorResponse(401));
+      });
+      deceiver.activateScenario('expired');
+
+      final response = await deceiver
+          .client(realClient)
+          .post(Uri.parse('https://auth.example.com/oauth/token'));
+
+      expect(response.statusCode, 401);
+    });
+
+    test('reset(baseUrl:) switches environment', () async {
+      void registerMocks(Deceiver deceiver, Uri auth) {
+        deceiver.on.get('/users', (req) => Response('users', 200));
+        deceiver.on.at(auth).post('/token', (req) => Response('token', 200));
+      }
+
+      final deceiver = Deceiver(
+        baseUrl: Uri.parse('https://dev.example.com/api'),
+        options: const DeceiverOptions(onlyAllowMocks: true),
+      );
+      registerMocks(deceiver, Uri.parse('https://auth.dev.example.com'));
+      final client = deceiver.client(realClient);
+
+      deceiver.reset(baseUrl: Uri.parse('https://acc.example.com/api'));
+      registerMocks(deceiver, Uri.parse('https://auth.acc.example.com'));
+
+      expect(deceiver.baseUrl, Uri.parse('https://acc.example.com/api'));
+      expect(
+        (await client.get(Uri.parse('https://acc.example.com/api/users'))).body,
+        'users',
+      );
+      expect(
+        (await client.post(Uri.parse('https://auth.acc.example.com/token')))
+            .body,
+        'token',
+      );
+      // The old environment is no longer handled.
+      final oldAuth = Uri.parse('https://auth.dev.example.com/token');
+      expect((await client.post(oldAuth)).body, 'real $oldAuth');
+    });
+
+    test('reset() without baseUrl keeps the base URL', () {
+      final deceiver = Deceiver(baseUrl: apiUrl)..reset();
+
+      expect(deceiver.baseUrl, apiUrl);
+    });
+
+    test('rejects invalid URLs', () {
+      final deceiver = Deceiver();
+
+      expect(() => deceiver.on.at(Uri.parse('/relative')), throwsArgumentError);
+      expect(
+        () => deceiver.on.at(Uri.parse('https://x.com?a=b')),
+        throwsArgumentError,
+      );
+      expect(
+        () => deceiver.reset(baseUrl: Uri.parse('/relative')),
+        throwsArgumentError,
+      );
+      for (final path in ['http:/x.com/users', 'https:///users']) {
+        expect(
+          () => deceiver.on.get(path, emptyResponse()),
+          throwsArgumentError,
+          reason: path,
+        );
+      }
+    });
+  });
+
   group('Sequential responses', () {
     test('returns responses in order', () async {
       final deceiver = Deceiver();

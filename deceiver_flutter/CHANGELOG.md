@@ -1,6 +1,6 @@
 ## 0.4.0
 
-- Added `DeceiverController.reset()`.
+- Added `DeceiverController.reset()`, optionally with a new `baseUrl`.
 - Requires `deceiver` 0.4.0.
 
 ## 0.3.0

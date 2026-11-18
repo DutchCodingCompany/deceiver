@@ -124,8 +124,10 @@ print(controller.scenarios); // ['happy', 'error']
 print(controller.activeScenarioRegistrations); // mocks of 'happy'
 controller.deactivateScenario();
 
-// Remove all mocks, scenarios and recorded requests
-controller.reset();
+// Remove all mocks, scenarios and recorded requests, for example when the
+// app switches environments, and register the mocks again
+controller.reset(baseUrl: env.apiUrl);
+registerMocks(controller.deceiver, env);
 
 // Listen for changes
 controller.addListener(() {

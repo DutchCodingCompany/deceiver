@@ -28,7 +28,15 @@ class DeceiverData {
     required this.responseBuilder,
     required this.description,
     this.isEnabled = true,
+    this.baseUrl,
   });
+
+  /// The base URL this mock was registered for with `on.at()` or with a full
+  /// URL as path, or `null` if it is relative to `Deceiver.baseUrl`.
+  ///
+  /// Requests under this URL are handled by the `Deceiver`, even when they
+  /// are outside `Deceiver.baseUrl`.
+  final Uri? baseUrl;
 
   /// The matcher function that determines if a request should be intercepted.
   final DeceiverRequestMatcher requestMatcher;
