@@ -22,3 +22,4 @@ export 'src/deceiver_data.dart' show DeceiverData, DeceiverResponseBuilder;
 export 'src/deceiver_exception.dart';
 export 'src/deceiver_request_matchers.dart';
 export 'src/deceiver_response_helpers.dart';
+export 'src/path_parameters.dart' show DeceiverPathParameters;

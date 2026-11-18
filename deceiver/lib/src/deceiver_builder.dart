@@ -1,6 +1,8 @@
 import 'deceiver.dart';
 import 'deceiver_data.dart';
 import 'deceiver_request_matchers.dart';
+import 'path_parameters.dart';
+import 'path_template.dart';
 
 /// Fluent API for registering mock HTTP responses.
 ///
@@ -39,59 +41,66 @@ class DeceiverBuilder {
     _addMock(data);
   }
 
-  /// Registers a mock for GET requests matching [path].
-  void get(String path, DeceiverResponseBuilder responseBuilder) {
+  void _onPath(
+    String method,
+    String path,
+    DeceiverResponseBuilder responseBuilder,
+  ) {
+    final template = PathTemplate(path);
     _on(
-      'GET $path',
-      matchAll([matchMethod('GET'), matchPath(path)]),
-      responseBuilder,
+      '$method $path',
+      matchAll([
+        matchMethod(method),
+        (request) => template.match(request.url) != null,
+      ]),
+      (request) {
+        setPathParameters(request, template.match(request.url) ?? const {});
+        return responseBuilder(request);
+      },
     );
   }
+
+  /// Registers a mock for GET requests matching [path].
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void get(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('GET', path, responseBuilder);
 
   /// Registers a mock for POST requests matching [path].
-  void post(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'POST $path',
-      matchAll([matchMethod('POST'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void post(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('POST', path, responseBuilder);
 
   /// Registers a mock for PUT requests matching [path].
-  void put(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'PUT $path',
-      matchAll([matchMethod('PUT'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void put(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('PUT', path, responseBuilder);
 
   /// Registers a mock for DELETE requests matching [path].
-  void delete(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'DELETE $path',
-      matchAll([matchMethod('DELETE'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void delete(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('DELETE', path, responseBuilder);
 
   /// Registers a mock for PATCH requests matching [path].
-  void patch(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'PATCH $path',
-      matchAll([matchMethod('PATCH'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void patch(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('PATCH', path, responseBuilder);
 
   /// Registers a mock for HEAD requests matching [path].
-  void head(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'HEAD $path',
-      matchAll([matchMethod('HEAD'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void head(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('HEAD', path, responseBuilder);
 
   /// Registers a mock using a custom [requestMatcher].
   ///

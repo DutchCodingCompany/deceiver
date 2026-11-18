@@ -626,6 +626,53 @@ void main() {
       });
     });
 
+    group('pathParameters', () {
+      test('gives the response builder the placeholder values', () async {
+        final deceiver = Deceiver();
+        deceiver.on.get(
+          '/users/{userId}/posts/{postId}',
+          (req) => jsonResponse(body: req.pathParameters)(req),
+        );
+
+        final response = await deceiver.client().get(
+          Uri.parse('https://example.com/users/Jos%C3%A9/posts/5'),
+        );
+
+        expect(json.decode(response.body), {'userId': 'José', 'postId': '5'});
+      });
+
+      test('is empty for custom matchers', () async {
+        final deceiver = Deceiver();
+        deceiver.on.match(
+          (req) => true,
+          (req) => Response('${req.pathParameters}', 200),
+        );
+
+        final response = await deceiver.client().get(
+          Uri.parse('https://example.com/users/42'),
+        );
+
+        expect(response.body, '{}');
+      });
+
+      test('works in scenarios', () async {
+        final deceiver = Deceiver();
+        deceiver.scenario('s', (on) {
+          on.delete(
+            '/users/{id}',
+            (req) => Response(req.pathParameters['id']!, 200),
+          );
+        });
+        deceiver.activateScenario('s');
+
+        final response = await deceiver.client().delete(
+          Uri.parse('https://example.com/users/7'),
+        );
+
+        expect(response.body, '7');
+      });
+    });
+
     group('matchMethod', () {
       test('method matching is case-insensitive', () {
         final url = Uri.parse('https://example.com/users');
