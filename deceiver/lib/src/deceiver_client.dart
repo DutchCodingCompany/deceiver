@@ -1,6 +1,7 @@
 import 'package:http/http.dart';
 
 import 'deceiver.dart';
+import 'deceiver_exception.dart';
 
 /// An HTTP client that intercepts requests and returns mock responses
 /// when a matching mock is registered in its [Deceiver] instance.
@@ -20,6 +21,8 @@ class DeceiverClient extends BaseClient {
 
   @override
   Future<StreamedResponse> send(BaseRequest request) async {
+    if (!_deceiver.enabled) return _client.send(request);
+
     // Convert BaseRequest to Request so matchers can inspect the body.
     final concreteRequest = _toRequest(request);
 
@@ -32,14 +35,23 @@ class DeceiverClient extends BaseClient {
 
     // No mock matched.
     if (_deceiver.options.onlyAllowMocks) {
-      throw StateError(
+      // The query is left out because it may contain secrets such as tokens.
+      final url = request.url;
+      final safeUrl = Uri(
+        scheme: url.scheme,
+        host: url.host,
+        port: url.hasPort ? url.port : null,
+        path: url.path,
+      );
+      throw DeceiverException(
+        'no matching mock found for:\n'
         '\n'
-        'Deceiver: no matching mock found for:\n'
-        '\n'
-        '  ${request.method.toUpperCase()} ${request.url}\n'
+        '  ${request.method.toUpperCase()} $safeUrl'
+        '${url.hasQuery ? ' (query omitted)' : ''}\n'
         '\n'
         'Registered mocks:\n'
         '${_deceiver.toPrettyPrintedString()}\n',
+        safeUrl,
       );
     }
 

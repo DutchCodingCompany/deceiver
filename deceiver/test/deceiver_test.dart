@@ -243,7 +243,7 @@ void main() {
     });
 
     group('onlyAllowMocks = true', () {
-      test('throws StateError for unmatched requests', () async {
+      test('throws DeceiverException for unmatched requests', () async {
         final deceiver = Deceiver(
           options: const DeceiverOptions(onlyAllowMocks: true),
         );
@@ -254,7 +254,7 @@ void main() {
         expect(
           () => client.get(Uri.parse('https://example.com/not-registered')),
           throwsA(
-            isA<StateError>().having(
+            isA<DeceiverException>().having(
               (e) => e.message,
               'message',
               allOf(
@@ -266,6 +266,65 @@ void main() {
             ),
           ),
         );
+      });
+
+      test('DeceiverException is a ClientException', () async {
+        final deceiver = Deceiver(
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        final client = deceiver.client();
+
+        await expectLater(
+          client.get(Uri.parse('https://example.com/unknown')),
+          throwsA(isA<ClientException>()),
+        );
+      });
+
+      test('leaves the query out of the error', () async {
+        final deceiver = Deceiver(
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        final client = deceiver.client();
+
+        await expectLater(
+          client.get(Uri.parse('https://example.com/unknown?token=secret')),
+          throwsA(
+            isA<DeceiverException>()
+                .having((e) => e.message, 'message', isNot(contains('secret')))
+                .having(
+                  (e) => e.message,
+                  'message',
+                  contains('https://example.com/unknown (query omitted)'),
+                )
+                .having(
+                  (e) => e.uri,
+                  'uri',
+                  Uri.parse('https://example.com/unknown'),
+                )
+                .having(
+                  (e) => e.toString(),
+                  'toString',
+                  isNot(contains('secret')),
+                ),
+          ),
+        );
+      });
+
+      test('passes through when mocks are disabled', () async {
+        final deceiver = Deceiver(
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        deceiver.on.get('/users', (req) => Response('mocked', 200));
+        deceiver.enabled = false;
+
+        final client = deceiver.client(
+          MockClient((request) async => Response('real', 200)),
+        );
+        final response = await client.get(
+          Uri.parse('https://example.com/users'),
+        );
+
+        expect(response.body, 'real');
       });
 
       test('returns mock if matched even with onlyAllowMocks', () async {
@@ -423,7 +482,7 @@ void main() {
         // /users/42 should match, but /users/42/posts should NOT.
         expect(
           () => client.get(Uri.parse('https://example.com/users/42/posts')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
 
@@ -437,7 +496,7 @@ void main() {
 
         expect(
           () => client.get(Uri.parse('https://example.com/posts')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
     });
@@ -465,7 +524,7 @@ void main() {
 
         expect(
           () => client.post(Uri.parse('https://example.com/users')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
     });
@@ -1057,7 +1116,7 @@ void main() {
         // Unmatched throws
         expect(
           () => client.get(Uri.parse('https://example.com/unknown')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
 
