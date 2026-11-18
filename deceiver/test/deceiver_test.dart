@@ -442,7 +442,7 @@ void main() {
         expect(response.statusCode, 200);
       });
 
-      test('matches URI template with single variable', () async {
+      test('matches path template with single variable', () async {
         final deceiver = Deceiver();
         deceiver.on.get('/users/{id}', (req) => Response('user', 200));
 
@@ -455,7 +455,7 @@ void main() {
         expect(response.body, 'user');
       });
 
-      test('matches URI template with multiple variables', () async {
+      test('matches path template with multiple variables', () async {
         final deceiver = Deceiver();
         deceiver.on.get(
           '/users/{userId}/posts/{postId}',
@@ -471,7 +471,76 @@ void main() {
         expect(response.body, 'post');
       });
 
-      test('does not match subpath (reverse-match validation)', () async {
+      bool matches(String template, String url) =>
+          matchPath(template)(Request('GET', Uri.parse(url)));
+
+      for (final path in [
+        '/users/42',
+        '/users/john@doe.com',
+        '/users/2026-11-18T10:00',
+        '/users/new%20york',
+        '/users/Jos%C3%A9',
+        '/users/report(1).pdf',
+        '/users/a+b',
+        '/users/a,b;c=d',
+      ]) {
+        test('placeholder matches $path', () {
+          expect(matches('/users/{id}', 'https://example.com$path'), isTrue);
+        });
+      }
+
+      test('does not match a subpath, parent or trailing slash', () {
+        expect(matches('/users/{id}', 'https://x.com/users/42/posts'), isFalse);
+        expect(matches('/users/{id}', 'https://x.com/users'), isFalse);
+        expect(matches('/users/{id}', 'https://x.com/users/'), isFalse);
+        expect(matches('/users', 'https://x.com/users/'), isFalse);
+      });
+
+      test('a trailing slash in the template must be in the request', () {
+        expect(matches('/users/', 'https://x.com/users/'), isTrue);
+        expect(matches('/users/', 'https://x.com/users'), isFalse);
+      });
+
+      test('compares literal segments exactly, after decoding', () {
+        expect(matches('/users/me', 'https://x.com/users/me'), isTrue);
+        expect(matches('/users/me', 'https://x.com/users/you'), isFalse);
+        expect(matches('/café', 'https://x.com/caf%C3%A9'), isTrue);
+        expect(matches('/caf%C3%A9', 'https://x.com/café'), isTrue);
+      });
+
+      test('ignores host, scheme and query', () {
+        expect(
+          matches('/users', 'http://other-host:8080/users?page=2'),
+          isTrue,
+        );
+      });
+
+      test('matches the root path', () {
+        expect(matches('/', 'https://x.com/'), isTrue);
+        expect(matches('/', 'https://x.com'), isTrue);
+        expect(matches('/', 'https://x.com/users'), isFalse);
+      });
+
+      test('works without a leading slash in the template', () {
+        expect(matches('users/{id}', 'https://x.com/users/42'), isTrue);
+      });
+
+      for (final template in [
+        '/files/{+path}',
+        '/search{?q}',
+        '/users/{id:3}',
+        '/users/user-{id}',
+        '/users/{}',
+        '/users/{id',
+        '/search?q=dart',
+        '/page#top',
+      ]) {
+        test('rejects unsupported template $template', () {
+          expect(() => matchPath(template), throwsArgumentError);
+        });
+      }
+
+      test('does not match subpath', () async {
         final deceiver = Deceiver(
           options: const DeceiverOptions(onlyAllowMocks: true),
         );
@@ -502,16 +571,12 @@ void main() {
     });
 
     group('matchMethod', () {
-      test('method matching is case-insensitive', () async {
-        final deceiver = Deceiver();
-        deceiver.on.get('/users', (req) => Response('ok', 200));
+      test('method matching is case-insensitive', () {
+        final url = Uri.parse('https://example.com/users');
 
-        final client = deceiver.client();
-        final response = await client.get(
-          Uri.parse('https://example.com/users'),
-        );
-
-        expect(response.statusCode, 200);
+        expect(matchMethod('get')(Request('GET', url)), isTrue);
+        expect(matchMethod('GET')(Request('get', url)), isTrue);
+        expect(matchMethod('GET')(Request('POST', url)), isFalse);
       });
 
       test('does not match wrong method', () async {
