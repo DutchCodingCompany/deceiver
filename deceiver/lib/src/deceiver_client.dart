@@ -23,8 +23,7 @@ class DeceiverClient extends BaseClient {
   Future<StreamedResponse> send(BaseRequest request) async {
     if (!_deceiver.enabled) return _client.send(request);
 
-    // Convert BaseRequest to Request so matchers can inspect the body.
-    final concreteRequest = _toRequest(request);
+    final concreteRequest = await _toRequest(request);
 
     // Attempt to find a matching mock response.
     final mockResponse = await _deceiver.respond(concreteRequest);
@@ -56,21 +55,25 @@ class DeceiverClient extends BaseClient {
     }
 
     // Passthrough to the real HTTP client.
-    return _client.send(request);
+    return _client.send(concreteRequest);
   }
 
-  /// Converts a [BaseRequest] into a concrete [Request] so that matchers
-  /// can access the body, headers, method, and URL.
-  Request _toRequest(BaseRequest baseRequest) {
-    if (baseRequest is Request) {
-      return baseRequest;
-    }
+  /// Converts a [BaseRequest] into a [Request] so that matchers and response
+  /// builders can read the body.
+  ///
+  /// The body of other request types (e.g. [StreamedRequest],
+  /// [MultipartRequest]) is read into memory. Because a request can only be
+  /// sent once, this copy is also what gets forwarded to the real client.
+  Future<Request> _toRequest(BaseRequest baseRequest) async {
+    if (baseRequest is Request) return baseRequest;
 
-    // For non-Request types (e.g. StreamedRequest, MultipartRequest),
-    // create a Request with the method, URL, and headers so matchers
-    // can still match on those properties.
+    final bodyBytes = await baseRequest.finalize().toBytes();
     return Request(baseRequest.method, baseRequest.url)
-      ..headers.addAll(baseRequest.headers);
+      ..headers.addAll(baseRequest.headers)
+      ..bodyBytes = bodyBytes
+      ..followRedirects = baseRequest.followRedirects
+      ..maxRedirects = baseRequest.maxRedirects
+      ..persistentConnection = baseRequest.persistentConnection;
   }
 
   /// Converts a [Response] into a [StreamedResponse] which is what

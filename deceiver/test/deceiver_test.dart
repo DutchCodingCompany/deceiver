@@ -223,6 +223,62 @@ void main() {
       });
     });
 
+    group('streamed and multipart requests', () {
+      final url = Uri.parse('https://example.com/upload');
+
+      test('response builder can read a multipart body', () async {
+        final deceiver = Deceiver();
+        deceiver.on.post('/upload', (req) => Response(req.body, 200));
+
+        final request = MultipartRequest('POST', url)
+          ..fields['greeting'] = 'hello';
+        final response = await Response.fromStream(
+          await deceiver.client().send(request),
+        );
+
+        expect(response.body, contains('name="greeting"'));
+        expect(response.body, contains('hello'));
+      });
+
+      test('response builder can read a streamed body', () async {
+        final deceiver = Deceiver();
+        deceiver.on.post('/upload', (req) => Response(req.body, 200));
+
+        final request = StreamedRequest('POST', url);
+        final responseFuture = deceiver.client().send(request);
+        request.sink.add(utf8.encode('streamed body'));
+        await request.sink.close();
+        final response = await Response.fromStream(await responseFuture);
+
+        expect(response.body, 'streamed body');
+      });
+
+      test('passes a multipart request through unchanged', () async {
+        final deceiver = Deceiver();
+        late Request received;
+        final client = deceiver.client(
+          MockClient((request) async {
+            received = request;
+            return Response('real', 200);
+          }),
+        );
+
+        final request = MultipartRequest('POST', url)
+          ..fields['greeting'] = 'hello'
+          ..headers['x-custom'] = 'value';
+        await Response.fromStream(await client.send(request));
+
+        expect(received.method, 'POST');
+        expect(received.url, url);
+        expect(received.headers['x-custom'], 'value');
+        expect(
+          received.headers['content-type'],
+          startsWith('multipart/form-data; boundary='),
+        );
+        expect(received.body, contains('hello'));
+      });
+    });
+
     group('passthrough (onlyAllowMocks = false)', () {
       test('forwards unmatched requests to real client', () async {
         final deceiver = Deceiver();
