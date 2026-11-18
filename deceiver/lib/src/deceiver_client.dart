@@ -1,6 +1,7 @@
 import 'package:http/http.dart';
 
 import 'deceiver.dart';
+import 'deceiver_exception.dart';
 
 /// An HTTP client that intercepts requests and returns mock responses
 /// when a matching mock is registered in its [Deceiver] instance.
@@ -20,8 +21,9 @@ class DeceiverClient extends BaseClient {
 
   @override
   Future<StreamedResponse> send(BaseRequest request) async {
-    // Convert BaseRequest to Request so matchers can inspect the body.
-    final concreteRequest = _toRequest(request);
+    if (!_deceiver.enabled) return _client.send(request);
+
+    final concreteRequest = await _toRequest(request);
 
     // Attempt to find a matching mock response.
     final mockResponse = await _deceiver.respond(concreteRequest);
@@ -32,33 +34,46 @@ class DeceiverClient extends BaseClient {
 
     // No mock matched.
     if (_deceiver.options.onlyAllowMocks) {
-      throw StateError(
+      // The query is left out because it may contain secrets such as tokens.
+      final url = request.url;
+      final safeUrl = Uri(
+        scheme: url.scheme,
+        host: url.host,
+        port: url.hasPort ? url.port : null,
+        path: url.path,
+      );
+      throw DeceiverException(
+        'no matching mock found for:\n'
         '\n'
-        'Deceiver: no matching mock found for:\n'
-        '\n'
-        '  ${request.method.toUpperCase()} ${request.url}\n'
+        '  ${request.method.toUpperCase()} $safeUrl'
+        '${url.hasQuery ? ' (query omitted)' : ''}\n'
         '\n'
         'Registered mocks:\n'
         '${_deceiver.toPrettyPrintedString()}\n',
+        safeUrl,
       );
     }
 
     // Passthrough to the real HTTP client.
-    return _client.send(request);
+    return _client.send(concreteRequest);
   }
 
-  /// Converts a [BaseRequest] into a concrete [Request] so that matchers
-  /// can access the body, headers, method, and URL.
-  Request _toRequest(BaseRequest baseRequest) {
-    if (baseRequest is Request) {
-      return baseRequest;
-    }
+  /// Converts a [BaseRequest] into a [Request] so that matchers and response
+  /// builders can read the body.
+  ///
+  /// The body of other request types (e.g. [StreamedRequest],
+  /// [MultipartRequest]) is read into memory. Because a request can only be
+  /// sent once, this copy is also what gets forwarded to the real client.
+  Future<Request> _toRequest(BaseRequest baseRequest) async {
+    if (baseRequest is Request) return baseRequest;
 
-    // For non-Request types (e.g. StreamedRequest, MultipartRequest),
-    // create a Request with the method, URL, and headers so matchers
-    // can still match on those properties.
+    final bodyBytes = await baseRequest.finalize().toBytes();
     return Request(baseRequest.method, baseRequest.url)
-      ..headers.addAll(baseRequest.headers);
+      ..headers.addAll(baseRequest.headers)
+      ..bodyBytes = bodyBytes
+      ..followRedirects = baseRequest.followRedirects
+      ..maxRedirects = baseRequest.maxRedirects
+      ..persistentConnection = baseRequest.persistentConnection;
   }
 
   /// Converts a [Response] into a [StreamedResponse] which is what

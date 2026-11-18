@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Flutter ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The minimum supported Flutter version, with the lowest allowed
+          # version of the runtime dependencies. Dev dependencies such as
+          # package:test are left at their latest version, because old
+          # versions of them don't run on new SDKs.
+          - name: minimum
+            flutter-version: 3.47.x
+            pub-command: downgrade http material_ui
+            check-format: true
+          - name: stable
+            flutter-version: any
+            pub-command: get
+            check-format: false
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter-version }}
+          cache: true
+
+      # Resolve everything first: without a lock file, `pub downgrade <names>`
+      # would also downgrade all other packages.
+      - run: flutter pub get
+
+      - run: flutter pub ${{ matrix.pub-command }}
+
+      - if: matrix.check-format
+        run: dart format --output=none --set-exit-if-changed .
+
+      - run: flutter analyze
+
+      - name: Test deceiver
+        working-directory: deceiver
+        run: dart test
+
+      - name: Test deceiver_flutter
+        working-directory: deceiver_flutter
+        run: flutter test
+
+      - name: Publish dry run deceiver
+        working-directory: deceiver
+        run: dart pub publish --dry-run
+
+      - name: Publish dry run deceiver_flutter
+        working-directory: deceiver_flutter
+        run: flutter pub publish --dry-run

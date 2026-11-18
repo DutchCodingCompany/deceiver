@@ -68,6 +68,22 @@ void main() {
         expect(deceiver.registrations.first.description, 'search q=dart');
       });
     });
+
+    test('public types can be used to share mock setups', () async {
+      void registerUserMocks(DeceiverBuilder on) {
+        on.get('/users', (req) => Response('users', 200));
+      }
+
+      final deceiver = Deceiver();
+      registerUserMocks(deceiver.on);
+      deceiver.scenario('same', registerUserMocks);
+
+      final DeceiverClient client = deceiver.client();
+      final response = await client.get(Uri.parse('https://example.com/users'));
+
+      expect(response.body, 'users');
+      expect(deceiver.scenarioRegistrations('same'), hasLength(1));
+    });
   });
 
   group('DeceiverClient', () {
@@ -207,6 +223,62 @@ void main() {
       });
     });
 
+    group('streamed and multipart requests', () {
+      final url = Uri.parse('https://example.com/upload');
+
+      test('response builder can read a multipart body', () async {
+        final deceiver = Deceiver();
+        deceiver.on.post('/upload', (req) => Response(req.body, 200));
+
+        final request = MultipartRequest('POST', url)
+          ..fields['greeting'] = 'hello';
+        final response = await Response.fromStream(
+          await deceiver.client().send(request),
+        );
+
+        expect(response.body, contains('name="greeting"'));
+        expect(response.body, contains('hello'));
+      });
+
+      test('response builder can read a streamed body', () async {
+        final deceiver = Deceiver();
+        deceiver.on.post('/upload', (req) => Response(req.body, 200));
+
+        final request = StreamedRequest('POST', url);
+        final responseFuture = deceiver.client().send(request);
+        request.sink.add(utf8.encode('streamed body'));
+        await request.sink.close();
+        final response = await Response.fromStream(await responseFuture);
+
+        expect(response.body, 'streamed body');
+      });
+
+      test('passes a multipart request through unchanged', () async {
+        final deceiver = Deceiver();
+        late Request received;
+        final client = deceiver.client(
+          MockClient((request) async {
+            received = request;
+            return Response('real', 200);
+          }),
+        );
+
+        final request = MultipartRequest('POST', url)
+          ..fields['greeting'] = 'hello'
+          ..headers['x-custom'] = 'value';
+        await Response.fromStream(await client.send(request));
+
+        expect(received.method, 'POST');
+        expect(received.url, url);
+        expect(received.headers['x-custom'], 'value');
+        expect(
+          received.headers['content-type'],
+          startsWith('multipart/form-data; boundary='),
+        );
+        expect(received.body, contains('hello'));
+      });
+    });
+
     group('passthrough (onlyAllowMocks = false)', () {
       test('forwards unmatched requests to real client', () async {
         final deceiver = Deceiver();
@@ -227,7 +299,7 @@ void main() {
     });
 
     group('onlyAllowMocks = true', () {
-      test('throws StateError for unmatched requests', () async {
+      test('throws DeceiverException for unmatched requests', () async {
         final deceiver = Deceiver(
           options: const DeceiverOptions(onlyAllowMocks: true),
         );
@@ -238,7 +310,7 @@ void main() {
         expect(
           () => client.get(Uri.parse('https://example.com/not-registered')),
           throwsA(
-            isA<StateError>().having(
+            isA<DeceiverException>().having(
               (e) => e.message,
               'message',
               allOf(
@@ -250,6 +322,65 @@ void main() {
             ),
           ),
         );
+      });
+
+      test('DeceiverException is a ClientException', () async {
+        final deceiver = Deceiver(
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        final client = deceiver.client();
+
+        await expectLater(
+          client.get(Uri.parse('https://example.com/unknown')),
+          throwsA(isA<ClientException>()),
+        );
+      });
+
+      test('leaves the query out of the error', () async {
+        final deceiver = Deceiver(
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        final client = deceiver.client();
+
+        await expectLater(
+          client.get(Uri.parse('https://example.com/unknown?token=secret')),
+          throwsA(
+            isA<DeceiverException>()
+                .having((e) => e.message, 'message', isNot(contains('secret')))
+                .having(
+                  (e) => e.message,
+                  'message',
+                  contains('https://example.com/unknown (query omitted)'),
+                )
+                .having(
+                  (e) => e.uri,
+                  'uri',
+                  Uri.parse('https://example.com/unknown'),
+                )
+                .having(
+                  (e) => e.toString(),
+                  'toString',
+                  isNot(contains('secret')),
+                ),
+          ),
+        );
+      });
+
+      test('passes through when mocks are disabled', () async {
+        final deceiver = Deceiver(
+          options: const DeceiverOptions(onlyAllowMocks: true),
+        );
+        deceiver.on.get('/users', (req) => Response('mocked', 200));
+        deceiver.enabled = false;
+
+        final client = deceiver.client(
+          MockClient((request) async => Response('real', 200)),
+        );
+        final response = await client.get(
+          Uri.parse('https://example.com/users'),
+        );
+
+        expect(response.body, 'real');
       });
 
       test('returns mock if matched even with onlyAllowMocks', () async {
@@ -367,7 +498,7 @@ void main() {
         expect(response.statusCode, 200);
       });
 
-      test('matches URI template with single variable', () async {
+      test('matches path template with single variable', () async {
         final deceiver = Deceiver();
         deceiver.on.get('/users/{id}', (req) => Response('user', 200));
 
@@ -380,7 +511,7 @@ void main() {
         expect(response.body, 'user');
       });
 
-      test('matches URI template with multiple variables', () async {
+      test('matches path template with multiple variables', () async {
         final deceiver = Deceiver();
         deceiver.on.get(
           '/users/{userId}/posts/{postId}',
@@ -396,7 +527,76 @@ void main() {
         expect(response.body, 'post');
       });
 
-      test('does not match subpath (reverse-match validation)', () async {
+      bool matches(String template, String url) =>
+          matchPath(template)(Request('GET', Uri.parse(url)));
+
+      for (final path in [
+        '/users/42',
+        '/users/john@doe.com',
+        '/users/2026-11-18T10:00',
+        '/users/new%20york',
+        '/users/Jos%C3%A9',
+        '/users/report(1).pdf',
+        '/users/a+b',
+        '/users/a,b;c=d',
+      ]) {
+        test('placeholder matches $path', () {
+          expect(matches('/users/{id}', 'https://example.com$path'), isTrue);
+        });
+      }
+
+      test('does not match a subpath, parent or trailing slash', () {
+        expect(matches('/users/{id}', 'https://x.com/users/42/posts'), isFalse);
+        expect(matches('/users/{id}', 'https://x.com/users'), isFalse);
+        expect(matches('/users/{id}', 'https://x.com/users/'), isFalse);
+        expect(matches('/users', 'https://x.com/users/'), isFalse);
+      });
+
+      test('a trailing slash in the template must be in the request', () {
+        expect(matches('/users/', 'https://x.com/users/'), isTrue);
+        expect(matches('/users/', 'https://x.com/users'), isFalse);
+      });
+
+      test('compares literal segments exactly, after decoding', () {
+        expect(matches('/users/me', 'https://x.com/users/me'), isTrue);
+        expect(matches('/users/me', 'https://x.com/users/you'), isFalse);
+        expect(matches('/café', 'https://x.com/caf%C3%A9'), isTrue);
+        expect(matches('/caf%C3%A9', 'https://x.com/café'), isTrue);
+      });
+
+      test('ignores host, scheme and query', () {
+        expect(
+          matches('/users', 'http://other-host:8080/users?page=2'),
+          isTrue,
+        );
+      });
+
+      test('matches the root path', () {
+        expect(matches('/', 'https://x.com/'), isTrue);
+        expect(matches('/', 'https://x.com'), isTrue);
+        expect(matches('/', 'https://x.com/users'), isFalse);
+      });
+
+      test('works without a leading slash in the template', () {
+        expect(matches('users/{id}', 'https://x.com/users/42'), isTrue);
+      });
+
+      for (final template in [
+        '/files/{+path}',
+        '/search{?q}',
+        '/users/{id:3}',
+        '/users/user-{id}',
+        '/users/{}',
+        '/users/{id',
+        '/search?q=dart',
+        '/page#top',
+      ]) {
+        test('rejects unsupported template $template', () {
+          expect(() => matchPath(template), throwsArgumentError);
+        });
+      }
+
+      test('does not match subpath', () async {
         final deceiver = Deceiver(
           options: const DeceiverOptions(onlyAllowMocks: true),
         );
@@ -407,7 +607,7 @@ void main() {
         // /users/42 should match, but /users/42/posts should NOT.
         expect(
           () => client.get(Uri.parse('https://example.com/users/42/posts')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
 
@@ -421,22 +621,18 @@ void main() {
 
         expect(
           () => client.get(Uri.parse('https://example.com/posts')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
     });
 
     group('matchMethod', () {
-      test('method matching is case-insensitive', () async {
-        final deceiver = Deceiver();
-        deceiver.on.get('/users', (req) => Response('ok', 200));
+      test('method matching is case-insensitive', () {
+        final url = Uri.parse('https://example.com/users');
 
-        final client = deceiver.client();
-        final response = await client.get(
-          Uri.parse('https://example.com/users'),
-        );
-
-        expect(response.statusCode, 200);
+        expect(matchMethod('get')(Request('GET', url)), isTrue);
+        expect(matchMethod('GET')(Request('get', url)), isTrue);
+        expect(matchMethod('GET')(Request('POST', url)), isFalse);
       });
 
       test('does not match wrong method', () async {
@@ -449,7 +645,7 @@ void main() {
 
         expect(
           () => client.post(Uri.parse('https://example.com/users')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
     });
@@ -626,6 +822,13 @@ void main() {
       expect(output, contains('error (active):'));
     });
 
+    test('DeceiverOptions.copyWith keeps fields that are not passed', () {
+      const options = DeceiverOptions(onlyAllowMocks: true);
+
+      expect(options.copyWith().onlyAllowMocks, isTrue);
+      expect(options.copyWith(onlyAllowMocks: false).onlyAllowMocks, isFalse);
+    });
+
     test('registrations returns unmodifiable list', () {
       final deceiver = Deceiver();
       deceiver.on.get('/users', (req) => Response('', 200));
@@ -738,6 +941,17 @@ void main() {
       expect(() => sequentialResponse([]), throwsA(isA<ArgumentError>()));
     });
 
+    test('is not affected by later changes to the list', () async {
+      final builders = <DeceiverResponseBuilder>[(req) => Response('a', 200)];
+      final builder = sequentialResponse(builders);
+      builders.clear();
+
+      final response = await builder(
+        Request('GET', Uri.parse('https://x.com')),
+      );
+      expect(response.body, 'a');
+    });
+
     test('works with a single builder', () async {
       final deceiver = Deceiver();
       deceiver.on.get(
@@ -809,6 +1023,17 @@ void main() {
 
     test('throws on empty list', () {
       expect(() => randomResponse([]), throwsA(isA<ArgumentError>()));
+    });
+
+    test('is not affected by later changes to the list', () async {
+      final builders = <DeceiverResponseBuilder>[(req) => Response('a', 200)];
+      final builder = randomResponse(builders);
+      builders.clear();
+
+      final response = await builder(
+        Request('GET', Uri.parse('https://x.com')),
+      );
+      expect(response.body, 'a');
     });
 
     test('works with a single builder', () async {
@@ -1041,7 +1266,7 @@ void main() {
         // Unmatched throws
         expect(
           () => client.get(Uri.parse('https://example.com/unknown')),
-          throwsA(isA<StateError>()),
+          throwsA(isA<DeceiverException>()),
         );
       });
 

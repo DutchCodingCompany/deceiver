@@ -5,17 +5,26 @@ import 'package:http/http.dart';
 import 'deceiver_builder.dart';
 import 'deceiver_client.dart';
 import 'deceiver_data.dart';
+import 'deceiver_exception.dart';
 
 /// Configuration options for a [Deceiver] instance.
 class DeceiverOptions {
   const DeceiverOptions({this.onlyAllowMocks = false});
 
-  /// When `true`, requests that don't match any registered mock will throw
-  /// a [StateError] with a descriptive message listing all registered mocks.
+  /// When `true`, requests that don't match any registered mock throw a
+  /// [DeceiverException] with a descriptive message listing all registered
+  /// mocks.
   ///
   /// When `false` (default), unmatched requests are forwarded to the real
   /// HTTP client.
+  ///
+  /// Has no effect while [Deceiver.enabled] is `false`: then every request
+  /// goes to the real HTTP client.
   final bool onlyAllowMocks;
+
+  /// Returns a copy of these options with the given fields replaced.
+  DeceiverOptions copyWith({bool? onlyAllowMocks}) =>
+      DeceiverOptions(onlyAllowMocks: onlyAllowMocks ?? this.onlyAllowMocks);
 }
 
 /// A fake HTTP response orchestrator.
@@ -145,7 +154,7 @@ class Deceiver {
   String? get activeScenario => _activeScenario;
 
   /// The list of defined scenario names.
-  List<String> get scenarios => List.unmodifiable(_scenarios.keys.toList());
+  List<String> get scenarios => List.unmodifiable(_scenarios.keys);
 
   /// Returns the mock definitions for the given [scenarioName].
   ///

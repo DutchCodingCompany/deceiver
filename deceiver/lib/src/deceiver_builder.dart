@@ -1,6 +1,6 @@
-import 'package:deceiver/src/deceiver.dart';
-import 'package:deceiver/src/deceiver_data.dart';
-import 'package:deceiver/src/deceiver_request_matchers.dart';
+import 'deceiver.dart';
+import 'deceiver_data.dart';
+import 'deceiver_request_matchers.dart';
 
 /// Fluent API for registering mock HTTP responses.
 ///

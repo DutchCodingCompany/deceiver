@@ -7,6 +7,11 @@ import 'package:flutter/foundation.dart';
 /// and call [notifyListeners] on changes, so Flutter widgets can rebuild
 /// when mock settings change.
 ///
+/// Make changes through the controller while a `DeceiverPanel` is visible.
+/// Changes made directly on the [Deceiver] (such as registering a mock or
+/// setting [DeceiverData.isEnabled]) don't notify listeners, so the panel
+/// only shows them after its next rebuild.
+///
 /// ```dart
 /// final deceiver = Deceiver();
 /// deceiver.on.get('/users', jsonResponse(body: []));
@@ -40,19 +45,19 @@ class DeceiverController extends ChangeNotifier {
 
   set onlyAllowMocks(bool value) {
     if (deceiver.options.onlyAllowMocks == value) return;
-    deceiver.options = DeceiverOptions(onlyAllowMocks: value);
+    deceiver.options = deceiver.options.copyWith(onlyAllowMocks: value);
     notifyListeners();
   }
 
-  /// The list of registered mock definitions.
+  /// The list of registered base mock definitions.
   List<DeceiverData> get registrations => deceiver.registrations;
 
-  /// Toggles the [isEnabled] flag on the mock at the given [index].
-  void toggleMock(int index, {required bool enabled}) {
-    final mocks = deceiver.registrations;
-    if (index < 0 || index >= mocks.length) return;
-    if (mocks[index].isEnabled == enabled) return;
-    mocks[index].isEnabled = enabled;
+  /// Sets the [DeceiverData.isEnabled] flag of [mock].
+  ///
+  /// Works for base mocks and scenario mocks alike.
+  void toggleMock(DeceiverData mock, {required bool enabled}) {
+    if (mock.isEnabled == enabled) return;
+    mock.isEnabled = enabled;
     notifyListeners();
   }
 
@@ -65,6 +70,13 @@ class DeceiverController extends ChangeNotifier {
 
   /// The currently active scenario name, or `null` if none is active.
   String? get activeScenario => deceiver.activeScenario;
+
+  /// The mocks of the active scenario, or an empty list if none is active.
+  List<DeceiverData> get activeScenarioRegistrations {
+    final name = deceiver.activeScenario;
+    if (name == null) return const [];
+    return deceiver.scenarioRegistrations(name) ?? const [];
+  }
 
   /// Activates the scenario with the given [name].
   ///

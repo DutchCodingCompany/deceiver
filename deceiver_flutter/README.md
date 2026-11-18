@@ -11,27 +11,40 @@ UI panel you can embed anywhere in your app.
 
 - **Global toggle** -- enable/disable all mocks with a single switch
 - **Strict mode toggle** -- switch `onlyAllowMocks` on/off at runtime
+- **Scenarios** -- switch between named scenarios and toggle their mocks
 - **Per-mock toggles** -- enable/disable individual mock registrations
 - **Mock list** -- see all registered mocks with their descriptions and status
-- **Reactive** -- panel updates automatically when settings change
-- **Material Design** -- uses standard Material widgets that follow your app's theme
+- **Reactive** -- panel updates automatically when settings change through
+  the controller
+- **Material Design** -- built with
+  [`material_ui`](https://pub.dev/packages/material_ui) and follows your
+  app's theme
 
 ## Installation
 
-Add both `deceiver` and `deceiver_flutter` to your `pubspec.yaml`:
+Requires Flutter 3.47 or later.
 
-```yaml
-dev_dependencies:
-  deceiver: ^1.0.0
-  deceiver_flutter: ^0.1.0
+The panel lives in your app code (`lib/`), so add both packages as regular
+dependencies, not as dev dependencies:
+
+```sh
+flutter pub add deceiver deceiver_flutter
 ```
+
+Only show the panel and use the `DeceiverClient` in debug builds (for
+example behind `kDebugMode`), so the mocks never end up active in a
+release build.
+
+The panel uses `package:material_ui`. In apps that still use
+`package:flutter/material.dart` it works as well, but it shows Material's
+default theme instead of your app's theme.
 
 ## Quick Start
 
 ```dart
 import 'package:deceiver/deceiver.dart';
 import 'package:deceiver_flutter/deceiver_flutter.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 // 1. Create a Deceiver instance and register mocks.
 final deceiver = Deceiver();
@@ -101,13 +114,14 @@ controller.enabled = false;
 // Switch to strict mode
 controller.onlyAllowMocks = true;
 
-// Disable a specific mock
-controller.toggleMock(0, enabled: false);
+// Disable a specific mock (base or scenario mock)
+controller.toggleMock(controller.registrations.first, enabled: false);
 
 // Manage scenarios
 controller.activateScenario('happy');
 print(controller.activeScenario); // 'happy'
 print(controller.scenarios); // ['happy', 'error']
+print(controller.activeScenarioRegistrations); // mocks of 'happy'
 controller.deactivateScenario();
 
 // Listen for changes
@@ -116,9 +130,14 @@ controller.addListener(() {
 });
 ```
 
+Changes made directly on the `Deceiver` (such as registering a mock while
+the panel is open, or setting `isEnabled` on a mock) don't notify the
+controller. Make changes through the controller while the panel is visible,
+or they only show up after the panel rebuilds.
+
 ### Panel layout
 
-The panel displays up to three sections:
+The panel displays up to four sections:
 
 **Global Settings**
 - **Mocks enabled** -- master switch for all mocks
@@ -126,10 +145,13 @@ The panel displays up to three sections:
 
 **Scenarios** (only shown when scenarios are defined)
 - **None (base only)** -- deactivates any active scenario
-- One `ListTile` per defined scenario with radio-style selection
+- One `RadioListTile` per defined scenario
 - Tap to activate; tap the active scenario to deactivate
 
-**Registered Mocks**
+**Scenario Mocks** (only shown while a scenario is active)
+- The mocks of the active scenario, each with its own toggle switch
+
+**Base Mocks**
 - Each registered mock shown with its description (e.g. `GET /users`)
 - Individual toggle switch per mock
 - Status icon and label (Enabled / Disabled)
@@ -139,5 +161,5 @@ The panel displays up to three sections:
 
 | Class | Description |
 |---|---|
-| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activateScenario()`, and `deactivateScenario()`. |
+| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `activateScenario()`, and `deactivateScenario()`. |
 | `DeceiverPanel` | Material-styled widget that renders the full control panel. Takes a `DeceiverController`. |
