@@ -27,7 +27,7 @@ Future<void> basicUsage() async {
 
   final deceiver = Deceiver();
 
-  // Register mocks for different HTTP methods using URI templates.
+  // Register mocks for different HTTP methods using path templates.
   deceiver.on.get('/users', (req) => Response('["Bilbo", "Frodo"]', 200));
   deceiver.on.post('/users', (req) => Response('{"id": 1}', 201));
   deceiver.on.delete('/users/{id}', (req) => Response('', 204));
@@ -428,6 +428,7 @@ void debugOutput() {
 
   print(deceiver.toPrettyPrintedString());
   // Output:
+  // Base mocks:
   //   GET /users (enabled)
   //   POST /users (enabled)
   //   DELETE /users/{id} (disabled)

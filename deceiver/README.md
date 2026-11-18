@@ -2,7 +2,7 @@
 
 Configure and provide fake HTTP responses for Dart's
 [`package:http`](https://pub.dev/packages/http) Client. Intercept requests
-with URI templates, toggle mocks at runtime, and passthrough unmatched calls
+with path templates, toggle mocks at runtime, and passthrough unmatched calls
 to the real HTTP client.
 
 Inspired by [Charlatan](https://github.com/Betterment/charlatan) (for Dio),
@@ -10,7 +10,7 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 
 ## Features
 
-- Register fake responses by HTTP method and URI template path
+- Register fake responses by HTTP method and path template
 - Response helpers for JSON, errors, and empty responses
 - Sequential responses -- cycle through different responses on each call
 - Random responses -- pick a response at random from a list
@@ -25,17 +25,30 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 
 ## Installation
 
-Add `deceiver` to your `pubspec.yaml` as a dev dependency:
+Deceiver needs Dart 3.13 or later (Flutter 3.47 or later).
 
-```yaml
-dev_dependencies:
-  deceiver: ^1.0.0
-```
-
-Then run:
+If you only use Deceiver in tests, add it as a dev dependency:
 
 ```sh
-dart pub get
+dart pub add dev:deceiver
+```
+
+If your app uses it at runtime, for example to run against fake responses
+in a debug build, add it as a regular dependency, because code in `lib/`
+cannot import dev dependencies:
+
+```sh
+dart pub add deceiver
+```
+
+Make sure the mocks never end up active in a release build. In a Flutter
+app you can, for example, only use the `DeceiverClient` in debug mode:
+
+```dart
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart';
+
+final Client httpClient = kDebugMode ? deceiver.client() : Client();
 ```
 
 ## Quick Start
@@ -85,9 +98,17 @@ deceiver.on.patch('/users/{id}', (req) => Response('{"name": "patched"}', 200));
 deceiver.on.head('/users', (req) => Response('', 200));
 ```
 
-Paths use [RFC 6570 URI templates](https://www.rfc-editor.org/rfc/rfc6570),
-so `{id}` will match any value in that path segment. A template like
-`/users/{id}` will match `/users/42` but **not** `/users/42/posts`.
+A `{name}` placeholder matches exactly one path segment; every other
+segment must match literally. A template like `/users/{id}` matches
+`/users/42` and `/users/john@doe.com`, but **not** `/users/42/posts` or
+`/users/`. Values are compared after percent-decoding, so encoded paths
+such as `/users/Jos%C3%A9` match too.
+
+Only the path is compared: the host, scheme and query of the request are
+ignored. To match on the query, headers or body, use a
+[custom matcher](#custom-matchers). Templates with a query, a fragment or
+a placeholder that is not a whole segment (such as `{+path}`, `{?q}` or
+`user-{id}`) throw an `ArgumentError` when you register them.
 
 ### Response helpers
 
@@ -131,6 +152,10 @@ deceiver.on.post('/users', (req) {
   return Response('{"id": 1, "name": "Bilbo"}', 201);
 });
 ```
+
+This also works for `MultipartRequest` and `StreamedRequest`: Deceiver reads
+their body into memory first, so `req.body` and `req.bodyBytes` are
+available in matchers and response builders.
 
 ### Custom matchers
 
@@ -262,8 +287,10 @@ final client = deceiver.client(realClient);
 
 ### Strict mode (only allow mocks)
 
-Set `onlyAllowMocks: true` to throw a `StateError` when a request doesn't
-match any mock. This is useful in tests to catch unexpected HTTP calls:
+Set `onlyAllowMocks: true` to throw a `DeceiverException` when a request
+doesn't match any mock. This is useful in tests to catch unexpected HTTP
+calls. `DeceiverException` extends `ClientException` from `package:http`, so
+code that already handles network errors handles it too:
 
 ```dart
 final deceiver = Deceiver(
@@ -276,17 +303,24 @@ final client = deceiver.client();
 // This works fine
 await client.get(Uri.parse('https://api.example.com/users'));
 
-// This throws a StateError with a helpful message:
+// This throws a DeceiverException with a helpful message:
 //
-//   Deceiver: no matching mock found for:
+//   DeceiverException: no matching mock found for:
 //
 //     GET https://api.example.com/unknown
 //
 //   Registered mocks:
+//   Base mocks:
 //     GET /users (enabled)
 //
 await client.get(Uri.parse('https://api.example.com/unknown'));
 ```
+
+The query string is left out of the message, because it may contain
+secrets such as access tokens.
+
+Strict mode only applies while mocks are enabled. With
+`deceiver.enabled = false`, every request goes to the real HTTP client.
 
 ### Runtime enable/disable
 
@@ -344,6 +378,7 @@ deceiver.on.delete('/users/{id}', emptyResponse());
 
 print(deceiver.toPrettyPrintedString());
 // Output:
+// Base mocks:
 //   GET /users (enabled)
 //   POST /users (enabled)
 //   DELETE /users/{id} (enabled)
@@ -364,6 +399,8 @@ for (final reg in deceiver.registrations) {
 | `Deceiver` | Core orchestrator. Manages mock registrations and creates clients. |
 | `DeceiverOptions` | Configuration: `onlyAllowMocks` controls strict mode. |
 | `DeceiverBuilder` | Fluent API accessed via `deceiver.on` for registering mocks. |
+| `DeceiverClient` | The `package:http` client returned by `deceiver.client()`. |
+| `DeceiverException` | Thrown in strict mode for unmatched requests. Extends `ClientException`. |
 | `DeceiverData` | A single mock registration with matcher, builder, and `isEnabled` flag. |
 | `DeceiverResponseBuilder` | Typedef: `FutureOr<Response> Function(Request)` |
 | `DeceiverRequestMatcher` | Typedef: `bool Function(Request)` |
@@ -374,7 +411,7 @@ for (final reg in deceiver.registrations) {
 | `randomResponse()` | Helper: picks a random response builder from a list on each call. |
 | `matchAll()` | Composes multiple matchers with AND logic. |
 | `matchMethod()` | Matches requests by HTTP method. |
-| `matchPath()` | Matches requests by URI template path. |
+| `matchPath()` | Matches requests by path template. |
 
 ## Contributing
 
