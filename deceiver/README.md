@@ -18,6 +18,9 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 - Passthrough unmatched requests to the real HTTP client
 - Toggle all mocks on/off at runtime with a global switch
 - Toggle individual mocks on/off without removing them
+- Path parameters -- read `{id}` values in response builders
+- Base URL -- only mock requests to your own API
+- Request history -- check which requests were made, for example in tests
 - Custom request matchers for advanced matching logic
 - Async response builders for simulating delays or conditional logic
 - Descriptive error messages when strict mode is enabled
@@ -110,6 +113,20 @@ ignored. To match on the query, headers or body, use a
 a placeholder that is not a whole segment (such as `{+path}`, `{?q}` or
 `user-{id}`) throw an `ArgumentError` when you register them.
 
+### Base URL
+
+Pass a `baseUrl` to only handle requests to your own API. Mock paths are
+then relative to the path of the base URL:
+
+```dart
+final deceiver = Deceiver(baseUrl: Uri.parse('https://api.example.com/v1'));
+deceiver.on.get('/users', jsonResponse(body: [])); // GET /v1/users
+```
+
+Requests to another scheme, host or port, or outside the base path, always
+go to the real HTTP client, even in strict mode, and are not recorded.
+Without a `baseUrl`, mocks match requests to any host.
+
 ### Response helpers
 
 For common response patterns, use the built-in helpers instead of
@@ -156,6 +173,20 @@ deceiver.on.post('/users', (req) {
 This also works for `MultipartRequest` and `StreamedRequest`: Deceiver reads
 their body into memory first, so `req.body` and `req.bodyBytes` are
 available in matchers and response builders.
+
+### Path parameters
+
+Read the values of `{name}` placeholders with `req.pathParameters`. Values
+are percent-decoded:
+
+```dart
+deceiver.on.get('/users/{id}', (req) {
+  final id = req.pathParameters['id']; // '42' for GET /users/42
+  return Response('{"id": "$id"}', 200);
+});
+```
+
+`pathParameters` is empty for mocks registered with `on.match()`.
 
 ### Custom matchers
 
@@ -366,6 +397,36 @@ await client.get(Uri.parse('https://api.example.com/users')); // real
 await client.get(Uri.parse('https://api.example.com/posts')); // mocked
 ```
 
+### Recorded requests
+
+`deceiver.requests` lists the requests Deceiver handled, oldest first, each
+with the mock that answered it (`null` if no mock matched). Use it to check
+which requests your code made:
+
+```dart
+await userRepository.createUser('Bilbo');
+
+final posts = deceiver.requests.where(
+  (r) => r.request.method == 'POST' && r.request.url.path == '/users',
+);
+expect(posts, hasLength(1));
+expect(posts.single.request.body, contains('Bilbo'));
+```
+
+Deceiver keeps the last 100 requests. Change that with
+`DeceiverOptions(maxRecordedRequests: ...)`, or use `0` to record nothing.
+Requests sent while `enabled` is `false` are not recorded. Call
+`deceiver.clearRequests()` to empty the list.
+
+### Resetting
+
+`deceiver.reset()` removes all mocks, scenarios and recorded requests, for
+example between tests. Options, `enabled` and existing clients keep working:
+
+```dart
+tearDown(deceiver.reset);
+```
+
 ### Debugging
 
 List all registered mocks and their status:
@@ -397,10 +458,12 @@ for (final reg in deceiver.registrations) {
 | Class / Function | Description |
 |---|---|
 | `Deceiver` | Core orchestrator. Manages mock registrations and creates clients. |
-| `DeceiverOptions` | Configuration: `onlyAllowMocks` controls strict mode. |
+| `DeceiverOptions` | Configuration: `onlyAllowMocks` controls strict mode, `maxRecordedRequests` the request history. |
 | `DeceiverBuilder` | Fluent API accessed via `deceiver.on` for registering mocks. |
 | `DeceiverClient` | The `package:http` client returned by `deceiver.client()`. |
 | `DeceiverException` | Thrown in strict mode for unmatched requests. Extends `ClientException`. |
+| `DeceiverRecordedRequest` | An entry of `deceiver.requests`: the request and the mock that answered it. |
+| `request.pathParameters` | Extension on `Request` with the values of the path placeholders. |
 | `DeceiverData` | A single mock registration with matcher, builder, and `isEnabled` flag. |
 | `DeceiverResponseBuilder` | Typedef: `FutureOr<Response> Function(Request)` |
 | `DeceiverRequestMatcher` | Typedef: `bool Function(Request)` |

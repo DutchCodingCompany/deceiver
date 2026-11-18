@@ -1,3 +1,8 @@
+## 0.4.0
+
+- Added `DeceiverController.reset()`.
+- Requires `deceiver` 0.4.0.
+
 ## 0.3.0
 
 ### Breaking
