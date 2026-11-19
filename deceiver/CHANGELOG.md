@@ -1,3 +1,23 @@
+## 0.4.0
+
+- `request.pathParameters` gives response builders the values of the
+  `{name}` placeholders in the path, percent-decoded.
+- `Deceiver(baseUrl: ...)` only handles requests to that scheme, host, port
+  and path. Mock paths are relative to the base URL. Other requests always go
+  to the real client, even in strict mode. Added `Deceiver.appliesTo()`.
+- `deceiver.requests` records the handled requests together with the mock
+  that answered them. Keeps the last 100 by default; change this with
+  `DeceiverOptions.maxRecordedRequests`. Added `clearRequests()`.
+- `on.at(url)` registers mocks for another API, also inside scenarios. A
+  full URL as path (`on.get('https://maps.example.com/geocode')`) registers
+  a mock for an API with a fixed URL. Requests to these URLs count for strict
+  mode and are recorded. Added `DeceiverData.baseUrl`.
+- `deceiver.reset()` removes all mocks, scenarios and recorded requests.
+  `reset(baseUrl: ...)` also changes the base URL, for example when the app
+  switches environments.
+- A path that looks like a URL but isn't valid (`http:/x.com`) throws an
+  `ArgumentError` instead of never matching.
+
 ## 0.3.0
 
 ### Breaking

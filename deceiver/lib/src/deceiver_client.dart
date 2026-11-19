@@ -21,7 +21,9 @@ class DeceiverClient extends BaseClient {
 
   @override
   Future<StreamedResponse> send(BaseRequest request) async {
-    if (!_deceiver.enabled) return _client.send(request);
+    if (!_deceiver.enabled || !_deceiver.appliesTo(request.url)) {
+      return _client.send(request);
+    }
 
     final concreteRequest = await _toRequest(request);
 
