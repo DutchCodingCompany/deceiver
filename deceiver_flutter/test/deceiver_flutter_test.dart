@@ -85,6 +85,24 @@ void main() {
       expect(notified, isTrue);
     });
 
+    test('reset clears the deceiver and notifies listeners', () {
+      var notified = false;
+      controller.addListener(() => notified = true);
+
+      controller.reset();
+
+      expect(controller.registrations, isEmpty);
+      expect(notified, isTrue);
+    });
+
+    test('reset can change the base URL', () {
+      final acc = Uri.parse('https://acc.example.com');
+
+      controller.reset(baseUrl: acc);
+
+      expect(deceiver.baseUrl, acc);
+    });
+
     test('notifies listeners on toggleMock', () {
       var notified = false;
       controller.addListener(() => notified = true);

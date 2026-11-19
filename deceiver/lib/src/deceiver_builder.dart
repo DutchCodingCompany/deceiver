@@ -1,6 +1,10 @@
+import 'package:http/http.dart';
+
 import 'deceiver.dart';
 import 'deceiver_data.dart';
 import 'deceiver_request_matchers.dart';
+import 'path_parameters.dart';
+import 'path_template.dart';
 
 /// Fluent API for registering mock HTTP responses.
 ///
@@ -14,84 +18,179 @@ import 'deceiver_request_matchers.dart';
 /// deceiver.on.post('/users', (req) => Response('{"id": 1}', 201));
 /// deceiver.on.delete('/users/{id}', (req) => Response('', 204));
 /// ```
+///
+/// Paths are relative to [Deceiver.baseUrl]. Use [at] for another API, or
+/// pass a full URL as path for an API with a fixed URL:
+///
+/// ```dart
+/// deceiver.on.at(env.authUrl).post('/token', jsonResponse(body: {}));
+/// deceiver.on.get('https://maps.example.com/geocode', jsonResponse(body: {}));
+/// ```
 class DeceiverBuilder {
   /// Creates a builder that adds mocks to the given [Deceiver]'s base list.
-  DeceiverBuilder(Deceiver deceiver) : _addMock = deceiver.add;
+  ///
+  /// Paths are relative to [Deceiver.baseUrl].
+  DeceiverBuilder(Deceiver deceiver)
+    : _addMock = deceiver.add,
+      _baseUrl = deceiver.baseUrl,
+      _isAt = false;
 
   /// Creates a builder that appends mocks to the given [target] list.
   ///
   /// Used internally by [Deceiver.scenario] to populate a scenario's mock
-  /// list.
-  DeceiverBuilder.forList(List<DeceiverData> target) : _addMock = target.add;
+  /// list. Paths are relative to [baseUrl], if given.
+  DeceiverBuilder.forList(List<DeceiverData> target, {this._baseUrl})
+    : _addMock = target.add,
+      _isAt = false;
+
+  DeceiverBuilder._at(this._addMock, Uri this._baseUrl) : _isAt = true;
 
   final void Function(DeceiverData data) _addMock;
+
+  /// The URL paths are relative to, or `null` to match any host.
+  final Uri? _baseUrl;
+
+  /// Whether this builder was created with [at].
+  final bool _isAt;
+
+  static final _fullUrl = RegExp(
+    r'^([a-zA-Z][a-zA-Z0-9+.\-]*)://([^/?#]*)(.*)$',
+  );
+  static final _looksLikeUrl = RegExp(r'^[a-zA-Z][a-zA-Z0-9+.\-]*:/');
+
+  /// Returns a builder that registers mocks relative to [baseUrl] instead of
+  /// [Deceiver.baseUrl], for example for a second API.
+  ///
+  /// Requests under [baseUrl] are handled by the [Deceiver] (strict mode,
+  /// recorded requests), even when they are outside [Deceiver.baseUrl].
+  ///
+  /// ```dart
+  /// deceiver.on.at(env.authUrl).post('/token', jsonResponse(body: {}));
+  ///
+  /// deceiver.scenario('expired', (on) {
+  ///   on.at(env.authUrl).post('/token', errorResponse(401));
+  /// });
+  /// ```
+  ///
+  /// Throws an [ArgumentError] if [baseUrl] has no scheme or host, or has a
+  /// query or fragment.
+  DeceiverBuilder at(Uri baseUrl) {
+    checkBaseUrl(baseUrl, 'baseUrl');
+    return DeceiverBuilder._at(_addMock, baseUrl);
+  }
 
   void _on(
     String description,
     DeceiverRequestMatcher requestMatcher,
-    DeceiverResponseBuilder responseBuilder,
-  ) {
+    DeceiverResponseBuilder responseBuilder, {
+    Uri? baseUrl,
+  }) {
     final data = DeceiverData(
       description: description,
       requestMatcher: requestMatcher,
       responseBuilder: responseBuilder,
+      baseUrl: baseUrl,
     );
     _addMock(data);
   }
 
-  /// Registers a mock for GET requests matching [path].
-  void get(String path, DeceiverResponseBuilder responseBuilder) {
+  void _onPath(
+    String method,
+    String path,
+    DeceiverResponseBuilder responseBuilder,
+  ) {
+    final Uri? base;
+    final String templatePath;
+    final String description;
+    final bool isOwnBase;
+
+    if (_fullUrl.firstMatch(path) case final match?) {
+      base = Uri.parse('${match.group(1)}://${match.group(2)}');
+      checkBaseUrl(base, 'path');
+      final rest = match.group(3)!;
+      templatePath = rest.isEmpty ? '/' : rest;
+      description = '$method $path';
+      isOwnBase = true;
+    } else if (_looksLikeUrl.hasMatch(path)) {
+      throw ArgumentError.value(
+        path,
+        'path',
+        'Looks like a URL, but is not a valid one. Use scheme://host/path',
+      );
+    } else {
+      base = _baseUrl;
+      final basePath = _withoutTrailingSlash(base?.path ?? '');
+      final relativePath = path.startsWith('/') || basePath.isEmpty
+          ? path
+          : '/$path';
+      templatePath = '$basePath$relativePath';
+      isOwnBase = _isAt;
+      description = _isAt
+          ? '$method ${_withoutTrailingSlash('$base')}$relativePath'
+          : '$method $path';
+    }
+
+    final template = PathTemplate(templatePath);
+    Map<String, String>? match(Request request) {
+      if (base != null && !isUnderBaseUrl(request.url, base)) return null;
+      return template.match(request.url);
+    }
+
     _on(
-      'GET $path',
-      matchAll([matchMethod('GET'), matchPath(path)]),
-      responseBuilder,
+      description,
+      matchAll([matchMethod(method), (request) => match(request) != null]),
+      (request) {
+        setPathParameters(request, match(request) ?? const {});
+        return responseBuilder(request);
+      },
+      baseUrl: isOwnBase ? base : null,
     );
   }
+
+  static String _withoutTrailingSlash(String path) =>
+      path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+
+  /// Registers a mock for GET requests matching [path].
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void get(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('GET', path, responseBuilder);
 
   /// Registers a mock for POST requests matching [path].
-  void post(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'POST $path',
-      matchAll([matchMethod('POST'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void post(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('POST', path, responseBuilder);
 
   /// Registers a mock for PUT requests matching [path].
-  void put(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'PUT $path',
-      matchAll([matchMethod('PUT'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void put(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('PUT', path, responseBuilder);
 
   /// Registers a mock for DELETE requests matching [path].
-  void delete(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'DELETE $path',
-      matchAll([matchMethod('DELETE'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void delete(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('DELETE', path, responseBuilder);
 
   /// Registers a mock for PATCH requests matching [path].
-  void patch(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'PATCH $path',
-      matchAll([matchMethod('PATCH'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void patch(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('PATCH', path, responseBuilder);
 
   /// Registers a mock for HEAD requests matching [path].
-  void head(String path, DeceiverResponseBuilder responseBuilder) {
-    _on(
-      'HEAD $path',
-      matchAll([matchMethod('HEAD'), matchPath(path)]),
-      responseBuilder,
-    );
-  }
+  ///
+  /// See [matchPath] for the syntax of [path]. The response builder can read
+  /// the placeholder values via [DeceiverPathParameters.pathParameters].
+  void head(String path, DeceiverResponseBuilder responseBuilder) =>
+      _onPath('HEAD', path, responseBuilder);
 
   /// Registers a mock using a custom [requestMatcher].
   ///

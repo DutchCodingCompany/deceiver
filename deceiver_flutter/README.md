@@ -124,6 +124,11 @@ print(controller.scenarios); // ['happy', 'error']
 print(controller.activeScenarioRegistrations); // mocks of 'happy'
 controller.deactivateScenario();
 
+// Remove all mocks, scenarios and recorded requests, for example when the
+// app switches environments, and register the mocks again
+controller.reset(baseUrl: env.apiUrl);
+registerMocks(controller.deceiver, env);
+
 // Listen for changes
 controller.addListener(() {
   print('Mocks enabled: ${controller.enabled}');
@@ -161,5 +166,5 @@ The panel displays up to four sections:
 
 | Class | Description |
 |---|---|
-| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `activateScenario()`, and `deactivateScenario()`. |
+| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
 | `DeceiverPanel` | Material-styled widget that renders the full control panel. Takes a `DeceiverController`. |
