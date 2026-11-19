@@ -133,6 +133,18 @@ void main() {
     Finder switchFor(String title) =>
         find.widgetWithText(SwitchListTile, title);
 
+    testWidgets('renders the Deceiver header above global settings', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildPanel());
+
+      expect(find.text('Deceiver'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Deceiver')).dy,
+        lessThan(tester.getTopLeft(find.text('Global Settings')).dy),
+      );
+    });
+
     testWidgets('renders global settings section', (tester) async {
       await tester.pumpWidget(buildPanel());
 
@@ -479,6 +491,9 @@ void main() {
     testWidgets('toggling a scenario mock only changes that mock', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       controller.activateScenario('happy');
       await tester.pumpWidget(buildPanel());
 

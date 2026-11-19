@@ -1,3 +1,5 @@
+<img src="assets/deceiver_icon.svg" width="120" alt="Deceiver icon">
+
 # deceiver
 
 Configure and provide fake HTTP responses for Dart's

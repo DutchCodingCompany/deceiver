@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/DutchCodingCompany/deceiver/main/assets/deceiver_icon.svg" width="120" alt="Deceiver icon">
+
 # deceiver_flutter
 
 A Flutter debug control panel for the

@@ -1,6 +1,7 @@
 ## 0.4.0
 
 - Added `DeceiverController.reset()`, optionally with a new `baseUrl`.
+- The panel starts with a header showing the Deceiver icon.
 - Requires `deceiver` 0.4.0.
 
 ## 0.3.0
