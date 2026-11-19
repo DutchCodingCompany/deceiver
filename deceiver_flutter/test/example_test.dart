@@ -7,6 +7,10 @@ import '../example/lib/main.dart';
 
 void main() {
   testWidgets('example app loads users and switches scenarios', (tester) async {
+    // Tall enough to show the scenarios in the drawer below the panel header.
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const ExampleApp());
 
     await tester.tap(find.text('GET /users'));
