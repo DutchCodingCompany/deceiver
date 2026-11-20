@@ -5,6 +5,12 @@
   including the response of the mock. Works without setup for every
   `Deceiver` in an app that runs in debug or profile mode.
 - `Deceiver(name: ...)` names an instance in DevTools.
+- Tools and AI agents can control Deceiver in a running app through the
+  same `ext.deceiver.*` VM service extensions as DevTools, for example with
+  the Dart MCP server. `ext.deceiver.help` lists them, `instance` may be
+  left out with one Deceiver, and `setMockEnabled` also takes a
+  `description` (and `scenario`). Errors say what to pass. Documented in the
+  README; there is also an agent skill in `skills/deceiver`.
 - `deceiver.setAllMocksEnabled()` turns every mock on or off, base and
   scenario mocks alike, for example to then turn on only the one you need.
   The DevTools extension has a "Disable all" / "Enable all" button.

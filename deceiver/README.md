@@ -523,6 +523,60 @@ Changes made in DevTools also show up in the `deceiver_flutter` panel, and
 the other way around. Listen to changes yourself with
 `deceiver.addListener()`.
 
+### Controlling Deceiver from tools and AI agents
+
+The DevTools extension talks to the app through `ext.deceiver.*` VM service
+extensions. Anything that is connected to the VM service of a running app
+can call them, without DevTools: test tools, scripts, or an AI agent with
+the [Dart MCP server](https://dart.dev/tools/mcp-server) (its
+`vm_service` tool, command `callMethod`). Like DevTools, this only works in
+debug and profile builds.
+
+Call `ext.deceiver.help` to get the list below from the app itself. All
+parameters are strings. Every method except `help` and `getInstances` takes
+`instance`, the id from `getInstances`; leave it out when the app has one
+Deceiver.
+
+| Method | Parameters | Does |
+|---|---|---|
+| `ext.deceiver.help` | | Lists the methods, parameters and events. |
+| `ext.deceiver.getInstances` | | The Deceivers in the app: `id` and `name`. |
+| `ext.deceiver.getState` | | Settings, base mocks and scenarios. Each mock has `id`, `description`, `enabled` and `response` (what it responds). |
+| `ext.deceiver.setEnabled` | `enabled` | Turns all mocking on or off. |
+| `ext.deceiver.setOnlyAllowMocks` | `enabled` | Strict mode. |
+| `ext.deceiver.setActiveScenario` | `scenario` (leave out to deactivate) | Activates a scenario. |
+| `ext.deceiver.setMockEnabled` | `enabled`, and `mock` (id) or `description` with optional `scenario` | Turns one mock on or off. |
+| `ext.deceiver.setAllMocksEnabled` | `enabled` | Turns every mock on or off. |
+| `ext.deceiver.getRequests` | | The handled requests: `method`, `url`, headers, bodies, `mock` (null: no mock), `statusCode`, `durationMicros`, `error`. |
+| `ext.deceiver.clearRequests` | | Removes the recorded requests. |
+
+The setters return the new state, like `getState`. Invalid parameters give
+an error (code -32602) that says what to pass, for example the mocks that
+exist when a description doesn't match.
+
+The app also posts events on the `Extension` stream:
+`deceiver:instancesChanged`, `deceiver:changed`, `deceiver:request` and
+`deceiver:requestsCleared`.
+
+For example, to only let `GET /users` fail with the `error` scenario and
+check that the app called it:
+
+```text
+ext.deceiver.setAllMocksEnabled  {enabled: "false"}
+ext.deceiver.setActiveScenario   {scenario: "error"}
+ext.deceiver.setMockEnabled      {description: "GET /users", scenario: "error", enabled: "true"}
+... use the app ...
+ext.deceiver.getRequests         → requests[].mock.description == "GET /users", statusCode 500
+```
+
+These methods and their parameters stay compatible within a minor version.
+
+For AI agents there is a skill that explains all of this, from setting up
+Deceiver to testing with it:
+[skills/deceiver](https://github.com/DutchCodingCompany/deceiver/tree/main/skills/deceiver).
+Copy that folder into the skills folder of your agent, for example
+`.claude/skills/` or `.agents/skills/` in your project.
+
 ### Inspecting mocks
 
 `mock.responseInfo` tells what a mock responds, as far as known when it was
