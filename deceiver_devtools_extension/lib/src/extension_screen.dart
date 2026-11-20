@@ -175,8 +175,30 @@ class _LabeledSwitch extends StatelessWidget {
         children: [
           Text(label),
           const SizedBox(width: 8),
-          Switch(value: value, onChanged: onChanged),
+          _SmallSwitch(value: value, onChanged: onChanged),
         ],
+      ),
+    );
+  }
+}
+
+/// A [Switch] scaled down to fit the dense DevTools UI.
+class _SmallSwitch extends StatelessWidget {
+  const _SmallSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 20,
+      child: FittedBox(
+        child: Switch(
+          value: value,
+          onChanged: onChanged,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
       ),
     );
   }
@@ -215,14 +237,19 @@ class _MockList extends StatelessWidget {
     );
   }
 
-  Widget _mockTile(MockInfo mock) => SwitchListTile(
-    dense: true,
-    title: Text(mock.description),
-    value: mock.enabled,
-    onChanged: state.enabled
-        ? (enabled) => controller.setMockEnabled(mock.id, enabled)
-        : null,
-  );
+  Widget _mockTile(MockInfo mock) {
+    final onChanged = state.enabled
+        ? (bool enabled) => controller.setMockEnabled(mock.id, enabled)
+        : null;
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      enabled: onChanged != null,
+      title: Text(mock.description),
+      trailing: _SmallSwitch(value: mock.enabled, onChanged: onChanged),
+      onTap: onChanged == null ? null : () => onChanged(!mock.enabled),
+    );
+  }
 }
 
 class _SectionHeader extends StatelessWidget {

@@ -54,6 +54,23 @@ void main() {
     expect(controller.state?.enabled, isFalse);
   });
 
+  testWidgets('tapping a mock toggles it with a small switch', (tester) async {
+    await pumpScreen(tester);
+
+    final switchBox = find.ancestor(
+      of: find.byType(Switch).last,
+      matching: find.byType(FittedBox),
+    );
+    expect(tester.getSize(switchBox).height, lessThan(24));
+
+    await tester.tap(find.text('GET /users').first);
+    await tester.pumpAndSettle();
+
+    final (method, params) = service.calls.last;
+    expect(method, 'setMockEnabled');
+    expect(params, {'instance': '1', 'mock': '10', 'enabled': 'false'});
+  });
+
   testWidgets('shows requests and their details', (tester) async {
     service.requests = [fakeRequest(1), fakeRequest(2, mocked: false)];
     await pumpScreen(tester);
