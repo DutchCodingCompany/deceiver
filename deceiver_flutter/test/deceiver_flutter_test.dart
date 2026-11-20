@@ -110,6 +110,24 @@ void main() {
       controller.toggleMock(controller.registrations[0], enabled: false);
       expect(notified, isTrue);
     });
+
+    test('notifies listeners on changes made directly on the deceiver', () {
+      var notifyCount = 0;
+      controller.addListener(() => notifyCount++);
+
+      deceiver.enabled = false;
+      deceiver.registrations[0].isEnabled = false;
+      deceiver.on.get('/posts', (req) => Response('', 200));
+
+      expect(notifyCount, 3);
+    });
+
+    test('stops listening to the deceiver after dispose', () {
+      controller.dispose();
+
+      // Would throw if the disposed controller still notified.
+      deceiver.enabled = false;
+    });
   });
 
   group('DeceiverPanel', () {

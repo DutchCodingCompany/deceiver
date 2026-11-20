@@ -27,37 +27,43 @@ class DeceiverClient extends BaseClient {
 
     final concreteRequest = await _toRequest(request);
 
-    // Attempt to find a matching mock response.
-    final mockResponse = await _deceiver.respond(concreteRequest);
+    // Attempt to find a matching mock response. In strict mode, throws when
+    // no mock matches.
+    final mockResponse = await respondOrThrow(
+      _deceiver,
+      concreteRequest,
+      onNoMock: _deceiver.options.onlyAllowMocks
+          ? () => _noMockException(request)
+          : null,
+    );
 
     if (mockResponse != null) {
       return _toStreamedResponse(mockResponse, request);
     }
 
-    // No mock matched.
-    if (_deceiver.options.onlyAllowMocks) {
-      // The query is left out because it may contain secrets such as tokens.
-      final url = request.url;
-      final safeUrl = Uri(
-        scheme: url.scheme,
-        host: url.host,
-        port: url.hasPort ? url.port : null,
-        path: url.path,
-      );
-      throw DeceiverException(
-        'no matching mock found for:\n'
-        '\n'
-        '  ${request.method.toUpperCase()} $safeUrl'
-        '${url.hasQuery ? ' (query omitted)' : ''}\n'
-        '\n'
-        'Registered mocks:\n'
-        '${_deceiver.toPrettyPrintedString()}\n',
-        safeUrl,
-      );
-    }
-
     // Passthrough to the real HTTP client.
     return _client.send(concreteRequest);
+  }
+
+  DeceiverException _noMockException(BaseRequest request) {
+    // The query is left out because it may contain secrets such as tokens.
+    final url = request.url;
+    final safeUrl = Uri(
+      scheme: url.scheme,
+      host: url.host,
+      port: url.hasPort ? url.port : null,
+      path: url.path,
+    );
+    return DeceiverException(
+      'no matching mock found for:\n'
+      '\n'
+      '  ${request.method.toUpperCase()} $safeUrl'
+      '${url.hasQuery ? ' (query omitted)' : ''}\n'
+      '\n'
+      'Registered mocks:\n'
+      '${_deceiver.toPrettyPrintedString()}\n',
+      safeUrl,
+    );
   }
 
   /// Converts a [BaseRequest] into a [Request] so that matchers and response

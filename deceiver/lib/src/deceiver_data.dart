@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:http/http.dart';
 
+import 'deceiver_exception.dart';
 import 'deceiver_request_matchers.dart';
 
 /// A function that builds a [Response] given a [Request].
@@ -27,9 +28,13 @@ class DeceiverData {
     required this.requestMatcher,
     required this.responseBuilder,
     required this.description,
-    this.isEnabled = true,
+    this._isEnabled = true,
     this.baseUrl,
   });
+
+  static int _nextId = 0;
+  final int _id = _nextId++;
+  void Function()? _onChanged;
 
   /// The base URL this mock was registered for with `on.at()` or with a full
   /// URL as path, or `null` if it is relative to `Deceiver.baseUrl`.
@@ -49,12 +54,38 @@ class DeceiverData {
 
   /// Whether this individual mock is active. Set to `false` to disable
   /// without removing the registration.
-  bool isEnabled;
+  ///
+  /// Changing it notifies the listeners of the `Deceiver` the mock is
+  /// registered on.
+  bool get isEnabled => _isEnabled;
+  bool _isEnabled;
+
+  set isEnabled(bool value) {
+    if (_isEnabled == value) return;
+    _isEnabled = value;
+    _onChanged?.call();
+  }
+}
+
+/// A unique id of [mock] within this isolate, used by DevTools.
+int mockId(DeceiverData mock) => mock._id;
+
+/// Sets the callback that is called when [DeceiverData.isEnabled] of [mock]
+/// changes.
+void setMockOnChanged(DeceiverData mock, void Function() onChanged) {
+  mock._onChanged = onChanged;
 }
 
 /// A request handled by a `Deceiver`, see `Deceiver.requests`.
 class DeceiverRecordedRequest {
-  DeceiverRecordedRequest({required this.request, required this.mock});
+  DeceiverRecordedRequest({
+    required this.request,
+    required this.mock,
+    DateTime? timestamp,
+    this.response,
+    this.duration,
+    this.error,
+  }) : timestamp = timestamp ?? DateTime.now();
 
   /// The request. For streamed and multipart requests this is a copy with
   /// the body read into memory.
@@ -63,4 +94,19 @@ class DeceiverRecordedRequest {
   /// The mock that answered the request, or `null` if no mock matched. The
   /// request then went to the real HTTP client, or failed in strict mode.
   final DeceiverData? mock;
+
+  /// When the `Deceiver` received the request.
+  final DateTime timestamp;
+
+  /// The response of the [mock], or `null` if no mock matched or the mock
+  /// threw. Responses of the real HTTP client are not recorded.
+  final Response? response;
+
+  /// How long the [mock] took to build the response, or `null` if no mock
+  /// matched.
+  final Duration? duration;
+
+  /// The error of the request: the [DeceiverException] thrown in strict mode
+  /// when no mock matched, or what the [mock] threw. `null` otherwise.
+  final Object? error;
 }

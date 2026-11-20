@@ -15,7 +15,7 @@
 /// ```
 library;
 
-export 'src/deceiver.dart';
+export 'src/deceiver.dart' show Deceiver, DeceiverOptions;
 export 'src/deceiver_builder.dart';
 export 'src/deceiver_client.dart';
 export 'src/deceiver_data.dart'
