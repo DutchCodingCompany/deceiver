@@ -53,6 +53,17 @@ jobs:
         working-directory: deceiver_flutter
         run: flutter test
 
+      - name: Test deceiver_devtools_extension
+        working-directory: deceiver_devtools_extension
+        run: flutter test
+
+      # The build is not in git, but is published with deceiver.
+      - name: Build DevTools extension
+        working-directory: deceiver_devtools_extension
+        run: |
+          dart run devtools_extensions build_and_copy --source=. --dest=../deceiver/extension/devtools
+          dart run devtools_extensions validate --package=../deceiver
+
       - name: Publish dry run deceiver
         working-directory: deceiver
         run: dart pub publish --dry-run

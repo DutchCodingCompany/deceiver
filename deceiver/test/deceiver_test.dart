@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -923,7 +924,54 @@ void main() {
         throwsA(isA<DeceiverException>()),
       );
 
-      expect(deceiver.requests.single.mock, isNull);
+      final recorded = deceiver.requests.single;
+      expect(recorded.mock, isNull);
+      expect(recorded.error, isA<DeceiverException>());
+      expect(recorded.response, isNull);
+    });
+
+    test('records the response and duration of the mock', () async {
+      final deceiver = Deceiver();
+      deceiver.on.get('/users', jsonResponse(body: [], statusCode: 201));
+      final before = DateTime.now();
+
+      await deceiver.client().get(Uri.parse('https://x.com/users'));
+
+      final recorded = deceiver.requests.single;
+      expect(recorded.response?.statusCode, 201);
+      expect(recorded.response?.body, '[]');
+      expect(recorded.duration, isNotNull);
+      expect(recorded.error, isNull);
+      expect(recorded.timestamp.isBefore(before), isFalse);
+    });
+
+    test('records no response or duration for passthrough', () async {
+      final deceiver = Deceiver();
+      final client = deceiver.client(
+        MockClient((request) async => Response('real', 200)),
+      );
+
+      await client.get(Uri.parse('https://x.com/users'));
+
+      final recorded = deceiver.requests.single;
+      expect(recorded.response, isNull);
+      expect(recorded.duration, isNull);
+      expect(recorded.error, isNull);
+    });
+
+    test('records what the mock threw', () async {
+      final deceiver = Deceiver();
+      deceiver.on.get('/users', (req) => throw StateError('broken'));
+
+      await expectLater(
+        deceiver.client().get(Uri.parse('https://x.com/users')),
+        throwsStateError,
+      );
+
+      final recorded = deceiver.requests.single;
+      expect(recorded.mock, isNotNull);
+      expect(recorded.response, isNull);
+      expect(recorded.error, isStateError);
     });
 
     test('does not record while disabled', () async {
@@ -970,6 +1018,122 @@ void main() {
       deceiver.clearRequests();
 
       expect(deceiver.requests, isEmpty);
+    });
+
+    for (final (name, remove) in [
+      ('clearRequests', (Deceiver d) => d.clearRequests()),
+      ('reset', (Deceiver d) => d.reset()),
+    ]) {
+      test(
+        'does not record a request still being answered during $name',
+        () async {
+          final deceiver = Deceiver();
+          final answer = Completer<Response>();
+          deceiver.on.get('/slow', (req) => answer.future);
+          final client = deceiver.client();
+
+          final pending = client.get(Uri.parse('https://x.com/slow'));
+          await pumpEventQueue();
+          remove(deceiver);
+          answer.complete(Response('slow', 200));
+          await pending;
+
+          expect(deceiver.requests, isEmpty);
+
+          deceiver.on.get('/fast', (req) => Response('', 200));
+          await client.get(Uri.parse('https://x.com/fast'));
+          expect(deceiver.requests, hasLength(1));
+        },
+      );
+    }
+  });
+
+  group('listeners', () {
+    late Deceiver deceiver;
+    late int notified;
+
+    setUp(() {
+      deceiver = Deceiver();
+      notified = 0;
+      deceiver.addListener(() => notified++);
+    });
+
+    test('are notified when enabled changes', () {
+      deceiver.enabled = false;
+      deceiver.enabled = false;
+
+      expect(notified, 1);
+    });
+
+    test('are notified when options change', () {
+      deceiver.options = const DeceiverOptions(onlyAllowMocks: true);
+
+      expect(notified, 1);
+    });
+
+    test('are notified when a mock is added or toggled', () {
+      deceiver.on.get('/users', jsonResponse());
+      deceiver.registrations.single.isEnabled = false;
+      deceiver.registrations.single.isEnabled = false;
+
+      expect(notified, 2);
+    });
+
+    test('are notified for scenarios and their mocks', () {
+      deceiver.scenario('s', (on) => on.get('/users', jsonResponse()));
+      deceiver.activateScenario('s');
+      deceiver.activateScenario('s');
+      deceiver.scenarioRegistrations('s')!.single.isEnabled = false;
+      deceiver.deactivateScenario();
+      deceiver.deactivateScenario();
+
+      expect(notified, 4);
+    });
+
+    test('setAllMocksEnabled sets base and scenario mocks, notifying once', () {
+      deceiver.on.get('/users', jsonResponse());
+      deceiver.on.get('/posts', jsonResponse());
+      deceiver.scenario('s', (on) => on.get('/users', errorResponse(500)));
+      notified = 0;
+
+      deceiver.setAllMocksEnabled(false);
+
+      expect(notified, 1);
+      expect(deceiver.registrations.map((m) => m.isEnabled), [false, false]);
+      expect(deceiver.scenarioRegistrations('s')!.single.isEnabled, isFalse);
+
+      deceiver.setAllMocksEnabled(false);
+      expect(notified, 1);
+
+      deceiver.registrations.first.isEnabled = true;
+      expect(notified, 2);
+    });
+
+    test('are notified on reset', () {
+      deceiver.reset();
+
+      expect(notified, 1);
+    });
+
+    test('are not notified for recorded requests', () async {
+      deceiver.on.get('/users', jsonResponse());
+      notified = 0;
+
+      await deceiver.client().get(Uri.parse('https://x.com/users'));
+
+      expect(notified, 0);
+    });
+
+    test('are not notified after removeListener', () {
+      final deceiver = Deceiver();
+      var called = false;
+      void listener() => called = true;
+      deceiver.addListener(listener);
+      deceiver.removeListener(listener);
+
+      deceiver.enabled = false;
+
+      expect(called, isFalse);
     });
   });
 

@@ -1,0 +1,5 @@
+name: deceiver
+issueTracker: https://github.com/DutchCodingCompany/deceiver/issues
+version: 0.5.0
+materialIconCodePoint: "0xe625"
+requiresConnection: true

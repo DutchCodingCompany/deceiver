@@ -7,6 +7,7 @@ import 'deceiver_builder.dart';
 import 'deceiver_client.dart';
 import 'deceiver_data.dart';
 import 'deceiver_exception.dart';
+import 'devtools.dart';
 import 'path_template.dart';
 
 /// Configuration options for a [Deceiver] instance.
@@ -80,12 +81,18 @@ class Deceiver {
   /// deceiver.on.get('/users', jsonResponse(body: [])); // GET /v1/users
   /// ```
   ///
+  /// The [name] is shown in DevTools to tell instances apart.
+  ///
   /// Throws an [ArgumentError] if [baseUrl] has no scheme or host, or has a
   /// query or fragment.
-  Deceiver({this.options = const DeceiverOptions(), Uri? baseUrl})
+  Deceiver({this._options = const DeceiverOptions(), Uri? baseUrl, this.name})
     : _baseUrl = baseUrl {
     if (baseUrl != null) checkBaseUrl(baseUrl, 'baseUrl');
+    registerForDevTools(this);
   }
+
+  /// The name shown in DevTools, or `null` to show the [baseUrl].
+  final String? name;
 
   /// The URL that mocks are relative to, or `null` to handle requests to any
   /// host. Change it with [reset].
@@ -96,18 +103,54 @@ class Deceiver {
   ///
   /// Can be reassigned at runtime to change behavior (e.g. toggling
   /// [DeceiverOptions.onlyAllowMocks]).
-  DeceiverOptions options;
+  DeceiverOptions get options => _options;
+  DeceiverOptions _options;
+
+  set options(DeceiverOptions value) {
+    _options = value;
+    _notifyListeners();
+  }
 
   /// Global toggle to enable or disable all mocks at runtime.
   ///
   /// When `false`, all requests are forwarded to the real HTTP client
   /// regardless of registered mocks.
-  bool enabled = true;
+  bool get enabled => _enabled;
+  bool _enabled = true;
+
+  set enabled(bool value) {
+    if (_enabled == value) return;
+    _enabled = value;
+    _notifyListeners();
+  }
+
+  final List<void Function()> _listeners = [];
+
+  /// Registers [listener] to be called when the mock settings change: the
+  /// [enabled] flag, the [options], the registered mocks and scenarios, the
+  /// active scenario, a [DeceiverData.isEnabled] flag, or a [reset].
+  ///
+  /// Recorded [requests] don't call the listeners.
+  void addListener(void Function() listener) => _listeners.add(listener);
+
+  /// Removes a listener registered with [addListener].
+  void removeListener(void Function() listener) => _listeners.remove(listener);
+
+  void _notifyListeners() {
+    for (final listener in List.of(_listeners)) {
+      listener();
+    }
+    postDevToolsChanged(this);
+  }
 
   final List<DeceiverData> _data = [];
   final Map<String, List<DeceiverData>> _scenarios = {};
   String? _activeScenario;
   final _requests = ListQueue<DeceiverRecordedRequest>();
+
+  /// Raised when the recorded requests are removed, so that requests that
+  /// were still being answered at that moment are not recorded afterwards.
+  var _requestsGeneration = 0;
 
   /// Creates a [DeceiverClient] that intercepts HTTP requests.
   ///
@@ -145,7 +188,29 @@ class Deceiver {
 
   /// Registers a mock definition directly to the base mock list.
   void add(DeceiverData data) {
+    setMockOnChanged(data, _notifyListeners);
     _data.add(data);
+    _notifyListeners();
+  }
+
+  /// Sets [DeceiverData.isEnabled] of every mock: the base mocks and the
+  /// mocks of all scenarios. Notifies the listeners once.
+  ///
+  /// For example, turn all mocks off and then only the one you need on:
+  ///
+  /// ```dart
+  /// deceiver.setAllMocksEnabled(false);
+  /// deceiver.registrations.first.isEnabled = true;
+  /// ```
+  void setAllMocksEnabled(bool enabled) {
+    var changed = false;
+    for (final mock in [
+      ..._data,
+      for (final mocks in _scenarios.values) ...mocks,
+    ]) {
+      changed = setMockEnabledQuietly(mock, enabled) || changed;
+    }
+    if (changed) _notifyListeners();
   }
 
   /// Returns the list of base mock definitions.
@@ -176,17 +241,23 @@ class Deceiver {
     _scenarios.clear();
     _activeScenario = null;
     _requests.clear();
+    _requestsGeneration++;
+    _notifyListeners();
+    postDevToolsRequestsCleared(this);
   }
 
   // ---------------------------------------------------------------------------
   // Recorded requests
   // ---------------------------------------------------------------------------
 
-  /// The requests this [Deceiver] handled, oldest first.
+  /// The requests this [Deceiver] handled, in the order they were answered.
   ///
-  /// Each entry has the mock that answered it, or `null` if no mock matched.
+  /// Each entry has the mock that answered it, or `null` if no mock matched,
+  /// and the response of the mock.
   /// Keeps at most [DeceiverOptions.maxRecordedRequests] requests. Requests
-  /// sent while [enabled] is `false` or outside [baseUrl] are not recorded.
+  /// sent while [enabled] is `false` or outside [baseUrl] are not recorded,
+  /// nor requests that were still being answered when [clearRequests] or
+  /// [reset] was called.
   ///
   /// ```dart
   /// final posts = deceiver.requests.where(
@@ -197,14 +268,23 @@ class Deceiver {
   List<DeceiverRecordedRequest> get requests => List.unmodifiable(_requests);
 
   /// Removes all recorded [requests].
-  void clearRequests() => _requests.clear();
+  void clearRequests() {
+    _requests.clear();
+    _requestsGeneration++;
+    postDevToolsRequestsCleared(this);
+  }
 
-  void _record(DeceiverRecordedRequest recorded) {
+  /// Records [recorded], unless the requests were removed since
+  /// [generation].
+  void _record(DeceiverRecordedRequest recorded, int generation) {
+    if (generation != _requestsGeneration) return;
     final max = options.maxRecordedRequests;
+    if (max <= 0) return;
     _requests.addLast(recorded);
     while (_requests.length > max) {
       _requests.removeFirst();
     }
+    postDevToolsRequest(this, recorded);
   }
 
   // ---------------------------------------------------------------------------
@@ -234,7 +314,11 @@ class Deceiver {
     final scenarioMocks = <DeceiverData>[];
     final builder = DeceiverBuilder.forList(scenarioMocks, baseUrl: baseUrl);
     configure(builder);
+    for (final mock in scenarioMocks) {
+      setMockOnChanged(mock, _notifyListeners);
+    }
     _scenarios[name] = scenarioMocks;
+    _notifyListeners();
   }
 
   /// Activates the scenario with the given [name].
@@ -252,12 +336,16 @@ class Deceiver {
             'Available: ${_scenarios.keys.join(', ')}',
       );
     }
+    if (_activeScenario == name) return;
     _activeScenario = name;
+    _notifyListeners();
   }
 
   /// Deactivates the current scenario, reverting to base mocks only.
   void deactivateScenario() {
+    if (_activeScenario == null) return;
     _activeScenario = null;
+    _notifyListeners();
   }
 
   /// The name of the currently active scenario, or `null` if none is active.
@@ -287,12 +375,59 @@ class Deceiver {
   ///
   /// Returns `null` if [enabled] is `false`, the request is outside
   /// [baseUrl] or no registered mock matches.
-  Future<Response?> respond(Request request) async {
+  Future<Response?> respond(Request request) => _respond(request);
+
+  Future<Response?> _respond(
+    Request request, {
+    DeceiverException Function()? onNoMock,
+  }) async {
     if (!enabled || !appliesTo(request.url)) return null;
 
+    final timestamp = DateTime.now();
+    final generation = _requestsGeneration;
     final mock = _findMock(request);
-    _record(DeceiverRecordedRequest(request: request, mock: mock));
-    return mock == null ? null : await mock.responseBuilder(request);
+    if (mock == null) {
+      final error = onNoMock?.call();
+      _record(
+        DeceiverRecordedRequest(
+          request: request,
+          mock: null,
+          timestamp: timestamp,
+          error: error,
+        ),
+        generation,
+      );
+      if (error != null) throw error;
+      return null;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      final response = await mock.responseBuilder(request);
+      _record(
+        DeceiverRecordedRequest(
+          request: request,
+          mock: mock,
+          timestamp: timestamp,
+          response: response,
+          duration: stopwatch.elapsed,
+        ),
+        generation,
+      );
+      return response;
+    } catch (error) {
+      _record(
+        DeceiverRecordedRequest(
+          request: request,
+          mock: mock,
+          timestamp: timestamp,
+          duration: stopwatch.elapsed,
+          error: error,
+        ),
+        generation,
+      );
+      rethrow;
+    }
   }
 
   DeceiverData? _findMock(Request request) {
@@ -348,3 +483,11 @@ class Deceiver {
     return buffer.toString().trimRight();
   }
 }
+
+/// Like [Deceiver.respond], but throws the error of [onNoMock] when no mock
+/// matches, and records that error with the request.
+Future<Response?> respondOrThrow(
+  Deceiver deceiver,
+  Request request, {
+  DeceiverException Function()? onNoMock,
+}) => deceiver._respond(request, onNoMock: onNoMock);

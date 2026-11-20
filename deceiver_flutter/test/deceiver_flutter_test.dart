@@ -110,6 +110,24 @@ void main() {
       controller.toggleMock(controller.registrations[0], enabled: false);
       expect(notified, isTrue);
     });
+
+    test('notifies listeners on changes made directly on the deceiver', () {
+      var notifyCount = 0;
+      controller.addListener(() => notifyCount++);
+
+      deceiver.enabled = false;
+      deceiver.registrations[0].isEnabled = false;
+      deceiver.on.get('/posts', (req) => Response('', 200));
+
+      expect(notifyCount, 3);
+    });
+
+    test('stops listening to the deceiver after dispose', () {
+      controller.dispose();
+
+      // Would throw if the disposed controller still notified.
+      deceiver.enabled = false;
+    });
   });
 
   group('DeceiverPanel', () {
@@ -132,6 +150,11 @@ void main() {
 
     Finder switchFor(String title) =>
         find.widgetWithText(SwitchListTile, title);
+
+    Finder mockSwitch(String description) => find.descendant(
+      of: find.widgetWithText(ListTile, description),
+      matching: find.byType(Switch),
+    );
 
     testWidgets('renders the Deceiver header above global settings', (
       tester,
@@ -210,25 +233,23 @@ void main() {
       await tester.pumpWidget(buildPanel());
       expect(controller.registrations[0].isEnabled, isTrue);
 
-      await tester.tap(switchFor('GET /users'));
+      await tester.tap(mockSwitch('GET /users'));
       await tester.pump();
 
       expect(controller.registrations[0].isEnabled, isFalse);
-      expect(find.text('Disabled'), findsOneWidget);
+      expect(find.text('custom response · disabled'), findsOneWidget);
     });
 
     testWidgets('panel rebuilds when controller notifies', (tester) async {
       await tester.pumpWidget(buildPanel());
 
-      // All three mocks should show "Enabled" subtitles.
-      expect(find.text('Enabled'), findsNWidgets(3));
+      expect(find.text('custom response · disabled'), findsNothing);
 
       // Programmatically disable first mock.
       controller.toggleMock(controller.registrations[0], enabled: false);
       await tester.pump();
 
-      expect(find.text('Enabled'), findsNWidgets(2));
-      expect(find.text('Disabled'), findsOneWidget);
+      expect(find.text('custom response · disabled'), findsOneWidget);
     });
 
     testWidgets('disabled mock shows cancel icon', (tester) async {
@@ -252,7 +273,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('GET /users'), findsOneWidget);
 
-      await tester.tap(switchFor('GET /users'));
+      await tester.tap(mockSwitch('GET /users'));
       await tester.pump();
 
       expect(controller.registrations[0].isEnabled, isFalse);
@@ -497,11 +518,168 @@ void main() {
       controller.activateScenario('happy');
       await tester.pumpWidget(buildPanel());
 
-      await tester.tap(find.widgetWithText(SwitchListTile, 'GET /posts'));
+      await tester.tap(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'GET /posts'),
+          matching: find.byType(Switch),
+        ),
+      );
       await tester.pump();
 
       expect(deceiver.scenarioRegistrations('happy')![1].isEnabled, isFalse);
       expect(deceiver.registrations.single.isEnabled, isTrue);
+    });
+  });
+
+  group('DeceiverPanel mock inspection', () {
+    late Deceiver deceiver;
+    late DeceiverController controller;
+
+    setUp(() {
+      deceiver = Deceiver();
+      deceiver.on.get('/users', jsonResponse(body: ['Bilbo', 'Frodo']));
+      deceiver.on.delete('/users/{id}', emptyResponse());
+      deceiver.scenario('error', (on) {
+        on.get('/users', errorResponse(500, message: 'Server error'));
+      });
+      deceiver.scenario('flaky', (on) {
+        on.get(
+          '/posts',
+          sequentialResponse([jsonResponse(), errorResponse(503)]),
+        );
+      });
+      controller = DeceiverController(deceiver);
+    });
+
+    Future<void> pumpPanel(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: DeceiverPanel(controller: controller)),
+        ),
+      );
+    }
+
+    test('isOverridden compares with enabled mocks of the active scenario', () {
+      final users = deceiver.registrations.first;
+      expect(controller.isOverridden(users), isFalse);
+
+      controller.activateScenario('error');
+      expect(controller.isOverridden(users), isTrue);
+      expect(controller.isOverridden(deceiver.registrations[1]), isFalse);
+
+      controller.toggleMock(
+        controller.activeScenarioRegistrations.single,
+        enabled: false,
+      );
+      expect(controller.isOverridden(users), isFalse);
+    });
+
+    test('setAllMocksEnabled toggles base and scenario mocks', () {
+      var notified = 0;
+      controller.addListener(() => notified++);
+
+      controller.setAllMocksEnabled(false);
+
+      expect(notified, 1);
+      expect(controller.allMocks, hasLength(4));
+      expect(controller.allMocks.any((m) => m.isEnabled), isFalse);
+    });
+
+    testWidgets('the Disable all button turns every mock off', (tester) async {
+      await pumpPanel(tester);
+
+      await tester.tap(find.text('Disable all'));
+      await tester.pump();
+
+      expect(controller.allMocks.any((m) => m.isEnabled), isFalse);
+      expect(find.text('Enable all'), findsOneWidget);
+
+      await tester.tap(find.text('Enable all'));
+      await tester.pump();
+
+      expect(controller.allMocks.every((m) => m.isEnabled), isTrue);
+    });
+
+    test('scenarioRegistrations returns the mocks of any scenario', () {
+      expect(controller.scenarioRegistrations('flaky'), hasLength(1));
+      expect(controller.scenarioRegistrations('unknown'), isEmpty);
+    });
+
+    testWidgets('shows what each mock responds', (tester) async {
+      await pumpPanel(tester);
+
+      expect(find.text('200 · JSON · 2 items'), findsOneWidget);
+      expect(find.text('204 · empty'), findsOneWidget);
+    });
+
+    testWidgets('lists the active scenario first and marks overrides', (
+      tester,
+    ) async {
+      controller.activateScenario('error');
+      await pumpPanel(tester);
+
+      expect(
+        tester.getTopLeft(find.text('Scenario Mocks: error')).dy,
+        lessThan(tester.getTopLeft(find.text('Base Mocks')).dy),
+      );
+      expect(find.text('500 · error: "Server error"'), findsOneWidget);
+      expect(find.text('200 · JSON · 2 items · overridden'), findsOneWidget);
+    });
+
+    testWidgets('other scenarios are collapsed and can be expanded', (
+      tester,
+    ) async {
+      await pumpPanel(tester);
+
+      expect(find.text('Other Scenarios'), findsOneWidget);
+      expect(find.text('GET /posts'), findsNothing);
+
+      await tester.tap(find.widgetWithText(ExpansionTile, 'flaky'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('GET /posts'), findsOneWidget);
+      expect(find.text('sequence: 200 → 503'), findsOneWidget);
+    });
+
+    testWidgets('tapping a mock shows its details in a sheet', (tester) async {
+      await pumpPanel(tester);
+
+      await tester.tap(find.text('200 · JSON · 2 items'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Base mock'), findsOneWidget);
+      expect(find.text('Response body'), findsOneWidget);
+      expect(find.textContaining('"Frodo"'), findsOneWidget);
+      // Tapping the row opens the details, it doesn't toggle the mock.
+      expect(deceiver.registrations.first.isEnabled, isTrue);
+    });
+
+    testWidgets('the sheet toggles the mock and lists sequence calls', (
+      tester,
+    ) async {
+      await pumpPanel(tester);
+      await tester.tap(find.widgetWithText(ExpansionTile, 'flaky'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('sequence: 200 → 503'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Scenario flaky (not active)'), findsOneWidget);
+      expect(
+        find.text('Call 2: 503 · error', findRichText: true),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.widgetWithText(SwitchListTile, 'GET /posts'));
+      await tester.pump();
+
+      expect(
+        deceiver.scenarioRegistrations('flaky')!.single.isEnabled,
+        isFalse,
+      );
     });
   });
 }

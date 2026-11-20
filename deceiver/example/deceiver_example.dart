@@ -10,14 +10,21 @@ import 'package:http/testing.dart';
 void main() async {
   await basicUsage();
   await responseHelpers();
+  await pathParameters();
   await dynamicResponses();
   await customMatchers();
   await sequentialResponses();
   await randomResponses();
   await namedScenarios();
   await passthroughBehavior();
+  await strictMode();
+  await baseUrlAndMultipleApis();
   await runtimeToggle();
   await perMockToggle();
+  await recordedRequests();
+  await resetting();
+  listeners();
+  inspectingMocks();
   debugOutput();
 }
 
@@ -93,6 +100,35 @@ Future<void> responseHelpers() async {
   );
   print('DELETE /users/7: ${deleted.statusCode}');
   // DELETE /users/7: 204
+
+  client.close();
+  print('');
+}
+
+/// Demonstrates reading `{name}` placeholders with request.pathParameters.
+Future<void> pathParameters() async {
+  print('=== Path Parameters ===\n');
+
+  final deceiver = Deceiver();
+  final users = {'1': 'Bilbo', '2': 'Frodo'};
+
+  deceiver.on.get('/users/{id}', (req) {
+    final name = users[req.pathParameters['id']];
+    if (name == null) return errorResponse(404, message: 'Not found')(req);
+    return jsonResponse(body: {'name': name})(req);
+  });
+
+  final client = deceiver.client();
+
+  final bilbo = await client.get(Uri.parse('https://api.example.com/users/1'));
+  print('GET /users/1: ${bilbo.statusCode} ${bilbo.body}');
+  // GET /users/1: 200 {"name":"Bilbo"}
+
+  final missing = await client.get(
+    Uri.parse('https://api.example.com/users/42'),
+  );
+  print('GET /users/42: ${missing.statusCode} ${missing.body}');
+  // GET /users/42: 404 {"error":"Not found"}
 
   client.close();
   print('');
@@ -349,6 +385,76 @@ Future<void> passthroughBehavior() async {
   print('');
 }
 
+/// Demonstrates strict mode: requests without a mock throw.
+Future<void> strictMode() async {
+  print('=== Strict Mode ===\n');
+
+  final deceiver = Deceiver(
+    options: const DeceiverOptions(onlyAllowMocks: true),
+  );
+  deceiver.on.get('/users', jsonResponse(body: []));
+
+  final client = deceiver.client();
+
+  try {
+    await client.get(Uri.parse('https://api.example.com/posts'));
+  } on DeceiverException catch (e) {
+    // DeceiverException extends ClientException, like a network error.
+    print('GET /posts threw: ${e.message.split('\n').first}');
+    // GET /posts threw: no matching mock found for:
+  }
+
+  client.close();
+  print('');
+}
+
+/// Demonstrates baseUrl, on.at() for another API, and a full URL as path.
+Future<void> baseUrlAndMultipleApis() async {
+  print('=== Base URL and Multiple APIs ===\n');
+
+  // Mock paths are relative to the base URL. Requests to other hosts go to
+  // the real client, even in strict mode.
+  final deceiver = Deceiver(baseUrl: Uri.parse('https://api.example.com/v1'));
+  deceiver.on.get('/users', jsonResponse(body: ['Bilbo']));
+
+  // A second API, with paths relative to its own URL.
+  deceiver.on
+      .at(Uri.parse('https://auth.example.com'))
+      .post('/token', jsonResponse(body: {'token': 'abc'}));
+
+  // An API with a fixed URL: a full URL as path.
+  deceiver.on.get(
+    'https://maps.example.com/geocode',
+    jsonResponse(body: {'lat': 52.37, 'lng': 4.89}),
+  );
+
+  final realClient = MockClient((request) async {
+    return Response('real ${request.url.host}', 200);
+  });
+  final client = deceiver.client(realClient);
+
+  final users = await client.get(Uri.parse('https://api.example.com/v1/users'));
+  print('GET api.example.com/v1/users: ${users.body}');
+  // GET api.example.com/v1/users: ["Bilbo"]
+
+  final token = await client.post(Uri.parse('https://auth.example.com/token'));
+  print('POST auth.example.com/token: ${token.body}');
+  // POST auth.example.com/token: {"token":"abc"}
+
+  final geocode = await client.get(
+    Uri.parse('https://maps.example.com/geocode?q=Amsterdam'),
+  );
+  print('GET maps.example.com/geocode: ${geocode.body}');
+  // GET maps.example.com/geocode: {"lat":52.37,"lng":4.89}
+
+  final other = await client.get(Uri.parse('https://other.example.com/x'));
+  print('GET other.example.com/x: ${other.body}');
+  // GET other.example.com/x: real other.example.com
+
+  client.close();
+  print('');
+}
+
 /// Demonstrates the global enabled toggle.
 Future<void> runtimeToggle() async {
   print('=== Runtime Toggle (Global) ===\n');
@@ -411,6 +517,102 @@ Future<void> perMockToggle() async {
   // /users goes to real client, /posts still mocked
 
   client.close();
+  print('');
+}
+
+/// Demonstrates deceiver.requests: what was sent and which mock answered.
+Future<void> recordedRequests() async {
+  print('=== Recorded Requests ===\n');
+
+  final deceiver = Deceiver();
+  deceiver.on.post('/users', jsonResponse(body: {'id': 1}, statusCode: 201));
+
+  final realClient = MockClient((request) async => Response('real', 200));
+  final client = deceiver.client(realClient);
+
+  await client.post(Uri.parse('https://api.example.com/users'), body: 'Bilbo');
+  await client.get(Uri.parse('https://api.example.com/posts'));
+
+  for (final recorded in deceiver.requests) {
+    final request = recorded.request;
+    final answer = recorded.mock == null
+        ? 'no mock'
+        : '${recorded.mock!.description} -> '
+              '${recorded.response!.statusCode} ${recorded.response!.body}';
+    print('${request.method} ${request.url.path} (${request.body}): $answer');
+  }
+  // POST /users (Bilbo): POST /users -> 201 {"id":1}
+  // GET /posts (): no mock
+
+  deceiver.clearRequests();
+  print('After clearRequests(): ${deceiver.requests.length} requests');
+  // After clearRequests(): 0 requests
+
+  client.close();
+  print('');
+}
+
+/// Demonstrates reset(), for example when the app switches environments.
+Future<void> resetting() async {
+  print('=== Reset ===\n');
+
+  final deceiver = Deceiver(baseUrl: Uri.parse('https://api.example.com'));
+  deceiver.on.get('/env', jsonResponse(body: 'production'));
+  final client = deceiver.client();
+
+  var env = await client.get(Uri.parse('https://api.example.com/env'));
+  print('Production: ${env.body}');
+  // Production: "production"
+
+  // Removes all mocks, scenarios and recorded requests. Existing clients
+  // keep working with the new mocks.
+  deceiver.reset(baseUrl: Uri.parse('https://staging.example.com'));
+  deceiver.on.get('/env', jsonResponse(body: 'staging'));
+
+  env = await client.get(Uri.parse('https://staging.example.com/env'));
+  print('Staging: ${env.body}');
+  // Staging: "staging"
+
+  client.close();
+  print('');
+}
+
+/// Demonstrates addListener(): get notified when the mock settings change.
+void listeners() {
+  print('=== Listeners ===\n');
+
+  final deceiver = Deceiver();
+  deceiver.addListener(() => print('Changed: enabled=${deceiver.enabled}'));
+
+  deceiver.on.get('/users', jsonResponse(body: []));
+  // Changed: enabled=true
+  deceiver.enabled = false;
+  // Changed: enabled=false
+
+  print('');
+}
+
+/// Demonstrates responseInfo: what a mock responds, without calling it.
+void inspectingMocks() {
+  print('=== Inspecting Mocks ===\n');
+
+  final deceiver = Deceiver();
+  deceiver.on.get('/users', jsonResponse(body: ['Bilbo', 'Frodo']));
+  deceiver.on.get('/secret', errorResponse(403, message: 'Forbidden'));
+  deceiver.on.get(
+    '/status',
+    sequentialResponse([jsonResponse(), errorResponse(500)]),
+  );
+  deceiver.on.get('/custom', (req) => Response('?', 200));
+
+  for (final mock in deceiver.registrations) {
+    print('${mock.description}: ${mock.responseInfo.summary}');
+  }
+  // GET /users: 200 · JSON · 2 items
+  // GET /secret: 403 · error: "Forbidden"
+  // GET /status: sequence: 200 → 500
+  // GET /custom: custom response
+
   print('');
 }
 

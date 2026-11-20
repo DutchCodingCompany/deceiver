@@ -14,10 +14,12 @@ UI panel you can embed anywhere in your app.
 - **Global toggle** -- enable/disable all mocks with a single switch
 - **Strict mode toggle** -- switch `onlyAllowMocks` on/off at runtime
 - **Scenarios** -- switch between named scenarios and toggle their mocks
-- **Per-mock toggles** -- enable/disable individual mock registrations
+- **Per-mock toggles** -- enable/disable individual mock registrations, or
+  all of them at once with "Disable all" / "Enable all"
 - **Mock list** -- see all registered mocks with their descriptions and status
-- **Reactive** -- panel updates automatically when settings change through
-  the controller
+- **Reactive** -- panel updates automatically when settings change, also
+  when they change directly on the `Deceiver` or from the Deceiver
+  DevTools extension
 - **Material Design** -- built with
   [`material_ui`](https://pub.dev/packages/material_ui) and follows your
   app's theme
@@ -137,18 +139,25 @@ controller.addListener(() {
 });
 ```
 
-Changes made directly on the `Deceiver` (such as registering a mock while
-the panel is open, or setting `isEnabled` on a mock) don't notify the
-controller. Make changes through the controller while the panel is visible,
-or they only show up after the panel rebuilds.
+The controller also notifies its listeners for changes made directly on the
+`Deceiver` (such as registering a mock or setting `isEnabled` on a mock) and
+for changes made in the Deceiver DevTools extension. Call
+`controller.dispose()` when you no longer need it.
+
+No access to the panel in your app, for example before login? Use the
+Deceiver tab in Dart DevTools instead, see the
+[deceiver README](https://pub.dev/packages/deceiver#devtools).
 
 ### Panel layout
 
-The panel displays up to four sections:
+The panel displays up to five sections. The mocks are listed in the order
+Deceiver looks for a match: the active scenario first, then the base mocks.
 
 **Global Settings**
 - **Mocks enabled** -- master switch for all mocks
 - **Only allow mocks** -- when on, unmatched requests throw errors
+- **All mocks** -- "Disable all" / "Enable all" sets every mock's own
+  toggle, so you can turn them all off and then only one on
 
 **Scenarios** (only shown when scenarios are defined)
 - **None (base only)** -- deactivates any active scenario
@@ -160,13 +169,25 @@ The panel displays up to four sections:
 
 **Base Mocks**
 - Each registered mock shown with its description (e.g. `GET /users`)
-- Individual toggle switch per mock
-- Status icon and label (Enabled / Disabled)
+  and what it responds (e.g. `200 · JSON · 2 items`)
+- Individual toggle switch per mock and a status icon
+- `overridden` when an enabled mock of the active scenario has the same
+  description
 - Count badge in the section header
+
+**Other Scenarios** (only shown when there are inactive scenarios)
+- One collapsed tile per scenario; expand it to see and toggle its mocks
+  before you activate it
+
+Tap a mock to see its details in a bottom sheet: where it's registered, its
+base URL, and the status code, headers and body it responds, or each
+response of a `sequentialResponse()` or `randomResponse()`. Mocks with a
+response builder of your own show `custom response`, because what they
+return is only known when they run.
 
 ## API Reference
 
 | Class | Description |
 |---|---|
-| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
+| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `scenarioRegistrations()`, `isOverridden()`, `allMocks`, `setAllMocksEnabled()`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
 | `DeceiverPanel` | Material-styled widget that renders the full control panel. Takes a `DeceiverController`. |

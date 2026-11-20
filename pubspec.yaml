@@ -7,5 +7,6 @@ environment:
 workspace:
   - deceiver
   - deceiver_flutter
+  - deceiver_devtools_extension
 
 

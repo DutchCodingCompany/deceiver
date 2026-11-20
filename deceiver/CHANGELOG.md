@@ -1,3 +1,35 @@
+## 0.5.0
+
+- Dart DevTools extension: a "deceiver" tab to turn mocks on and off,
+  switch strict mode and scenarios, and see the handled requests live,
+  including the response of the mock. Works without setup for every
+  `Deceiver` in an app that runs in debug or profile mode.
+- `Deceiver(name: ...)` names an instance in DevTools.
+- Tools and AI agents can control Deceiver in a running app through the
+  same `ext.deceiver.*` VM service extensions as DevTools, for example with
+  the Dart MCP server. `ext.deceiver.help` lists them, `instance` may be
+  left out with one Deceiver, and `setMockEnabled` also takes a
+  `description` (and `scenario`). Errors say what to pass. Documented in the
+  README; there is also an agent skill in `skills/deceiver`.
+- `deceiver.setAllMocksEnabled()` turns every mock on or off, base and
+  scenario mocks alike, for example to then turn on only the one you need.
+  The DevTools extension has a "Disable all" / "Enable all" button.
+- `DeceiverData.responseInfo` tells what a mock responds: the status code,
+  headers and body of `jsonResponse()`, `errorResponse()` and
+  `emptyResponse()`, the variants of `sequentialResponse()` and
+  `randomResponse()`, or `custom` for a builder of your own. The DevTools
+  extension shows it for every mock.
+- The example also covers path parameters, strict mode, base URLs and
+  multiple APIs, recorded requests, `reset()`, listeners and `responseInfo`.
+- `deceiver.addListener()` and `removeListener()`: get notified when
+  `enabled`, `options`, the mocks, the scenarios, the active scenario or a
+  mock's `isEnabled` change.
+- `DeceiverRecordedRequest` has the `response` and `duration` of the mock,
+  the `timestamp`, and the `error` of strict mode or of a mock that threw.
+  Requests are recorded when the mock has answered, so `deceiver.requests`
+  is in the order the requests were answered. Requests that are still being
+  answered during `clearRequests()` or `reset()` are not recorded.
+
 ## 0.4.0
 
 - `request.pathParameters` gives response builders the values of the

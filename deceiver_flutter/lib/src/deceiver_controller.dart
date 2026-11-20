@@ -3,14 +3,10 @@ import 'package:flutter/foundation.dart';
 
 /// A reactive wrapper around a [Deceiver] instance.
 ///
-/// Exposes getters and setters that proxy to the underlying [Deceiver]
-/// and call [notifyListeners] on changes, so Flutter widgets can rebuild
-/// when mock settings change.
-///
-/// Make changes through the controller while a `DeceiverPanel` is visible.
-/// Changes made directly on the [Deceiver] (such as registering a mock or
-/// setting [DeceiverData.isEnabled]) don't notify listeners, so the panel
-/// only shows them after its next rebuild.
+/// Exposes getters and setters that proxy to the underlying [Deceiver].
+/// The controller listens to the [Deceiver] and calls [notifyListeners] on
+/// every change, also changes made directly on the [Deceiver] or from
+/// DevTools, so Flutter widgets rebuild when mock settings change.
 ///
 /// ```dart
 /// final deceiver = Deceiver();
@@ -26,7 +22,9 @@ import 'package:flutter/foundation.dart';
 /// ```
 class DeceiverController extends ChangeNotifier {
   /// Creates a controller wrapping the given [deceiver] instance.
-  DeceiverController(this.deceiver);
+  DeceiverController(this.deceiver) {
+    deceiver.addListener(_onDeceiverChanged);
+  }
 
   /// The underlying [Deceiver] instance being controlled.
   final Deceiver deceiver;
@@ -37,7 +35,6 @@ class DeceiverController extends ChangeNotifier {
   set enabled(bool value) {
     if (deceiver.enabled == value) return;
     deceiver.enabled = value;
-    notifyListeners();
   }
 
   /// Whether unmatched requests should throw instead of passing through.
@@ -46,7 +43,6 @@ class DeceiverController extends ChangeNotifier {
   set onlyAllowMocks(bool value) {
     if (deceiver.options.onlyAllowMocks == value) return;
     deceiver.options = deceiver.options.copyWith(onlyAllowMocks: value);
-    notifyListeners();
   }
 
   /// The list of registered base mock definitions.
@@ -56,17 +52,24 @@ class DeceiverController extends ChangeNotifier {
   /// changes the [Deceiver.baseUrl]. See [Deceiver.reset].
   void reset({Uri? baseUrl}) {
     deceiver.reset(baseUrl: baseUrl);
-    notifyListeners();
   }
 
   /// Sets the [DeceiverData.isEnabled] flag of [mock].
   ///
   /// Works for base mocks and scenario mocks alike.
   void toggleMock(DeceiverData mock, {required bool enabled}) {
-    if (mock.isEnabled == enabled) return;
     mock.isEnabled = enabled;
-    notifyListeners();
   }
+
+  /// All mocks: the base mocks and the mocks of every scenario.
+  List<DeceiverData> get allMocks => [
+    ...registrations,
+    for (final name in scenarios) ...scenarioRegistrations(name),
+  ];
+
+  /// Sets [DeceiverData.isEnabled] of every mock, base and scenario mocks
+  /// alike. See [Deceiver.setAllMocksEnabled].
+  void setAllMocksEnabled(bool enabled) => deceiver.setAllMocksEnabled(enabled);
 
   // ---------------------------------------------------------------------------
   // Scenarios
@@ -85,19 +88,42 @@ class DeceiverController extends ChangeNotifier {
     return deceiver.scenarioRegistrations(name) ?? const [];
   }
 
+  /// The mocks of the scenario with [name], or an empty list if there is no
+  /// such scenario.
+  List<DeceiverData> scenarioRegistrations(String name) =>
+      deceiver.scenarioRegistrations(name) ?? const [];
+
+  /// Whether [mock] is a base mock that an enabled mock of the active
+  /// scenario with the same [DeceiverData.description] overrides.
+  ///
+  /// This compares descriptions, so it doesn't detect overrides between mocks
+  /// registered with `on.match()`.
+  bool isOverridden(DeceiverData mock) {
+    if (!registrations.contains(mock)) return false;
+    return activeScenarioRegistrations.any(
+      (m) => m.isEnabled && m.description == mock.description,
+    );
+  }
+
   /// Activates the scenario with the given [name].
   ///
   /// Scenario mocks take priority over base mocks while active.
   void activateScenario(String name) {
     if (deceiver.activeScenario == name) return;
     deceiver.activateScenario(name);
-    notifyListeners();
   }
 
   /// Deactivates the current scenario, reverting to base mocks only.
   void deactivateScenario() {
     if (deceiver.activeScenario == null) return;
     deceiver.deactivateScenario();
-    notifyListeners();
+  }
+
+  void _onDeceiverChanged() => notifyListeners();
+
+  @override
+  void dispose() {
+    deceiver.removeListener(_onDeceiverChanged);
+    super.dispose();
   }
 }

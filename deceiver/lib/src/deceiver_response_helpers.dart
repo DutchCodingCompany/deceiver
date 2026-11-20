@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:http/http.dart';
 
 import 'deceiver_data.dart';
+import 'deceiver_response_info.dart';
 
 /// Creates a [DeceiverResponseBuilder] that returns a JSON response.
 ///
@@ -19,14 +20,31 @@ DeceiverResponseBuilder jsonResponse({
   int statusCode = 200,
   Map<String, String> headers = const {},
 }) {
-  return (request) {
-    final mergedHeaders = {'content-type': 'application/json', ...headers};
-    return Response(
+  final mergedHeaders = {'content-type': 'application/json', ...headers};
+  return describeResponse(
+    (request) => Response(
       body == null ? '' : json.encode(body),
       statusCode,
       headers: mergedHeaders,
-    );
-  };
+    ),
+    DeceiverResponseInfo(
+      kind: DeceiverResponseKind.json,
+      statusCode: statusCode,
+      headers: mergedHeaders,
+      body: _tryEncode(body),
+    ),
+  );
+}
+
+/// The [body] as JSON for [DeceiverResponseInfo.body], or `null` if it is
+/// `null` or can't be encoded (the response then throws when it is built).
+String? _tryEncode(Object? body) {
+  if (body == null) return null;
+  try {
+    return json.encode(body);
+  } on JsonUnsupportedObjectError {
+    return null;
+  }
 }
 
 /// Creates a [DeceiverResponseBuilder] that returns an error response.
@@ -43,17 +61,19 @@ DeceiverResponseBuilder errorResponse(
   String? message,
   Map<String, String> headers = const {},
 }) {
-  return (request) {
-    if (message != null) {
-      final mergedHeaders = {'content-type': 'application/json', ...headers};
-      return Response(
-        json.encode({'error': message}),
-        statusCode,
-        headers: mergedHeaders,
-      );
-    }
-    return Response('', statusCode, headers: headers);
-  };
+  final body = message == null ? '' : json.encode({'error': message});
+  final responseHeaders = message == null
+      ? headers
+      : {'content-type': 'application/json', ...headers};
+  return describeResponse(
+    (request) => Response(body, statusCode, headers: responseHeaders),
+    DeceiverResponseInfo(
+      kind: DeceiverResponseKind.error,
+      statusCode: statusCode,
+      headers: responseHeaders,
+      body: message == null ? null : body,
+    ),
+  );
 }
 
 /// Creates a [DeceiverResponseBuilder] that returns an empty response.
@@ -67,7 +87,14 @@ DeceiverResponseBuilder emptyResponse({
   int statusCode = 204,
   Map<String, String> headers = const {},
 }) {
-  return (request) => Response('', statusCode, headers: headers);
+  return describeResponse(
+    (request) => Response('', statusCode, headers: headers),
+    DeceiverResponseInfo(
+      kind: DeceiverResponseKind.empty,
+      statusCode: statusCode,
+      headers: headers,
+    ),
+  );
 }
 
 /// Creates a [DeceiverResponseBuilder] that cycles through [builders] in
@@ -98,11 +125,17 @@ DeceiverResponseBuilder sequentialResponse(
 
   final copy = List.of(builders);
   var index = 0;
-  return (request) {
-    final builder = copy[index % copy.length];
-    index++;
-    return builder(request);
-  };
+  return describeResponse(
+    (request) {
+      final builder = copy[index % copy.length];
+      index++;
+      return builder(request);
+    },
+    DeceiverResponseInfo(
+      kind: DeceiverResponseKind.sequential,
+      variants: copy.map(responseInfoOf).toList(),
+    ),
+  );
 }
 
 /// Creates a [DeceiverResponseBuilder] that picks a random builder from
@@ -130,8 +163,14 @@ DeceiverResponseBuilder randomResponse(
 
   final copy = List.of(builders);
   final rng = random ?? Random();
-  return (request) {
-    final builder = copy[rng.nextInt(copy.length)];
-    return builder(request);
-  };
+  return describeResponse(
+    (request) {
+      final builder = copy[rng.nextInt(copy.length)];
+      return builder(request);
+    },
+    DeceiverResponseInfo(
+      kind: DeceiverResponseKind.random,
+      variants: copy.map(responseInfoOf).toList(),
+    ),
+  );
 }

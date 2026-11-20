@@ -15,7 +15,7 @@
 /// ```
 library;
 
-export 'src/deceiver.dart';
+export 'src/deceiver.dart' show Deceiver, DeceiverOptions;
 export 'src/deceiver_builder.dart';
 export 'src/deceiver_client.dart';
 export 'src/deceiver_data.dart'
@@ -23,4 +23,6 @@ export 'src/deceiver_data.dart'
 export 'src/deceiver_exception.dart';
 export 'src/deceiver_request_matchers.dart';
 export 'src/deceiver_response_helpers.dart';
+export 'src/deceiver_response_info.dart'
+    show DeceiverResponseInfo, DeceiverResponseKind;
 export 'src/path_parameters.dart' show DeceiverPathParameters;

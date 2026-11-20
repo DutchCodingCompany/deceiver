@@ -24,6 +24,8 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 - Base URL and `on.at()` -- only mock requests to your own APIs, in every
   environment
 - Request history -- check which requests were made, for example in tests
+- DevTools extension -- toggle mocks and see the handled requests in Dart
+  DevTools while the app runs
 - Custom request matchers for advanced matching logic
 - Async response builders for simulating delays or conditional logic
 - Descriptive error messages when strict mode is enabled
@@ -453,11 +455,17 @@ await client.get(Uri.parse('https://api.example.com/users')); // real
 await client.get(Uri.parse('https://api.example.com/posts')); // mocked
 ```
 
+Turn every mock on or off at once, base and scenario mocks alike, with
+`deceiver.setAllMocksEnabled(false)`. Then turn on only the ones you need.
+
 ### Recorded requests
 
-`deceiver.requests` lists the requests Deceiver handled, oldest first, each
-with the mock that answered it (`null` if no mock matched). Use it to check
-which requests your code made:
+`deceiver.requests` lists the requests Deceiver handled, in the order they
+were answered. Each entry has the mock that answered it (`null` if no mock
+matched), the `response` of the mock with its `duration`, the `timestamp`,
+and the `error` when strict mode rejected the request or the mock threw.
+Responses of the real HTTP client are not recorded. Use it to check which
+requests your code made:
 
 ```dart
 await userRepository.createUser('Bilbo');
@@ -472,7 +480,8 @@ expect(posts.single.request.body, contains('Bilbo'));
 Deceiver keeps the last 100 requests. Change that with
 `DeceiverOptions(maxRecordedRequests: ...)`, or use `0` to record nothing.
 Requests sent while `enabled` is `false` are not recorded. Call
-`deceiver.clearRequests()` to empty the list.
+`deceiver.clearRequests()` to empty the list; requests that are still being
+answered at that moment are not recorded either.
 
 ### Resetting
 
@@ -483,6 +492,111 @@ Pass `baseUrl` to change the base URL at the same time, see
 
 ```dart
 tearDown(deceiver.reset);
+```
+
+### DevTools
+
+Deceiver comes with a [Dart DevTools](https://docs.flutter.dev/tools/devtools)
+extension. Open DevTools for an app that runs in debug or profile mode and
+uses Deceiver, and open the **deceiver** tab (enable it in DevTools'
+extensions menu the first time). There you can:
+
+- turn all mocks on or off, and switch strict mode
+- activate a scenario
+- turn individual mocks on or off, including scenario mocks, and see what
+  each mock responds (status code, headers and body)
+- turn all mocks off at once ("Disable all"), to then turn on only the one
+  you need
+- see the handled requests live: which mock answered, the status code,
+  duration, and request and response body
+
+Requests without a mock show as passthrough; their real response is in
+DevTools' Network tab. Mocked responses don't show up in the Network tab.
+
+No setup is needed: every `Deceiver` shows up in DevTools by itself. With
+more than one, give them a `name` to tell them apart:
+
+```dart
+final deceiver = Deceiver(name: 'Auth API');
+```
+
+Changes made in DevTools also show up in the `deceiver_flutter` panel, and
+the other way around. Listen to changes yourself with
+`deceiver.addListener()`.
+
+### Controlling Deceiver from tools and AI agents
+
+The DevTools extension talks to the app through `ext.deceiver.*` VM service
+extensions. Anything that is connected to the VM service of a running app
+can call them, without DevTools: test tools, scripts, or an AI agent with
+the [Dart MCP server](https://dart.dev/tools/mcp-server) (its
+`vm_service` tool, command `callMethod`). Like DevTools, this only works in
+debug and profile builds.
+
+Call `ext.deceiver.help` to get the list below from the app itself. All
+parameters are strings. Every method except `help` and `getInstances` takes
+`instance`, the id from `getInstances`; leave it out when the app has one
+Deceiver.
+
+| Method | Parameters | Does |
+|---|---|---|
+| `ext.deceiver.help` | | Lists the methods, parameters and events. |
+| `ext.deceiver.getInstances` | | The Deceivers in the app: `id` and `name`. |
+| `ext.deceiver.getState` | | Settings, base mocks and scenarios. Each mock has `id`, `description`, `enabled` and `response` (what it responds). |
+| `ext.deceiver.setEnabled` | `enabled` | Turns all mocking on or off. |
+| `ext.deceiver.setOnlyAllowMocks` | `enabled` | Strict mode. |
+| `ext.deceiver.setActiveScenario` | `scenario` (leave out to deactivate) | Activates a scenario. |
+| `ext.deceiver.setMockEnabled` | `enabled`, and `mock` (id) or `description` with optional `scenario` | Turns one mock on or off. |
+| `ext.deceiver.setAllMocksEnabled` | `enabled` | Turns every mock on or off. |
+| `ext.deceiver.getRequests` | | The handled requests: `method`, `url`, headers, bodies, `mock` (null: no mock), `statusCode`, `durationMicros`, `error`. |
+| `ext.deceiver.clearRequests` | | Removes the recorded requests. |
+
+The setters return the new state, like `getState`. Invalid parameters give
+an error (code -32602) that says what to pass, for example the mocks that
+exist when a description doesn't match.
+
+The app also posts events on the `Extension` stream:
+`deceiver:instancesChanged`, `deceiver:changed`, `deceiver:request` and
+`deceiver:requestsCleared`.
+
+For example, to only let `GET /users` fail with the `error` scenario, while
+the other requests keep their base mocks, and check that the app called it:
+activate the scenario and turn off its other mocks (here `GET /posts`).
+Those endpoints fall back to their base mock.
+
+```text
+ext.deceiver.setActiveScenario   {scenario: "error"}
+ext.deceiver.setMockEnabled      {description: "GET /posts", scenario: "error", enabled: "false"}
+... use the app ...
+ext.deceiver.getRequests         → requests[].mock.description == "GET /users", statusCode 500
+```
+
+`setAllMocksEnabled {enabled: "false"}` also turns off the base mocks: then
+only the mocks you turn on again answer, and every other request goes to the
+real server (or fails in strict mode).
+
+These methods and their parameters stay compatible within a minor version.
+
+For AI agents there is a skill that explains all of this, from setting up
+Deceiver to testing with it:
+[skills/deceiver](https://github.com/DutchCodingCompany/deceiver/tree/main/skills/deceiver).
+Copy that folder into the skills folder of your agent, for example
+`.claude/skills/` or `.agents/skills/` in your project.
+
+### Inspecting mocks
+
+`mock.responseInfo` tells what a mock responds, as far as known when it was
+registered. The response helpers describe their status code, headers and
+body; `sequentialResponse()` and `randomResponse()` list their `variants`.
+Response builders of your own are `DeceiverResponseKind.custom`. The panel
+of `deceiver_flutter` and the DevTools extension use it to show each mock:
+
+```dart
+deceiver.on.get('/users', jsonResponse(body: [{'name': 'Bilbo'}]));
+
+final info = deceiver.registrations.single.responseInfo;
+print(info.summary); // 200 · JSON · 1 item
+print(info.body); // [{"name":"Bilbo"}]
 ```
 
 ### Debugging
@@ -520,9 +634,10 @@ for (final reg in deceiver.registrations) {
 | `DeceiverBuilder` | Fluent API accessed via `deceiver.on` for registering mocks. |
 | `DeceiverClient` | The `package:http` client returned by `deceiver.client()`. |
 | `DeceiverException` | Thrown in strict mode for unmatched requests. Extends `ClientException`. |
-| `DeceiverRecordedRequest` | An entry of `deceiver.requests`: the request and the mock that answered it. |
+| `DeceiverRecordedRequest` | An entry of `deceiver.requests`: the request, the mock that answered it and its response. |
 | `request.pathParameters` | Extension on `Request` with the values of the path placeholders. |
-| `DeceiverData` | A single mock registration with matcher, builder, and `isEnabled` flag. |
+| `DeceiverData` | A single mock registration with matcher, builder, `responseInfo`, and `isEnabled` flag. |
+| `DeceiverResponseInfo` | What a mock responds: `kind`, `statusCode`, `headers`, `body`, `variants` and a one-line `summary`. |
 | `DeceiverResponseBuilder` | Typedef: `FutureOr<Response> Function(Request)` |
 | `DeceiverRequestMatcher` | Typedef: `bool Function(Request)` |
 | `jsonResponse()` | Helper: builds a JSON response with `content-type: application/json`. |

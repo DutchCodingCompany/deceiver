@@ -3,6 +3,7 @@ import 'package:http/http.dart';
 import 'deceiver.dart';
 import 'deceiver_data.dart';
 import 'deceiver_request_matchers.dart';
+import 'deceiver_response_info.dart';
 import 'path_parameters.dart';
 import 'path_template.dart';
 
@@ -84,12 +85,14 @@ class DeceiverBuilder {
     DeceiverRequestMatcher requestMatcher,
     DeceiverResponseBuilder responseBuilder, {
     Uri? baseUrl,
+    DeceiverResponseInfo? responseInfo,
   }) {
     final data = DeceiverData(
       description: description,
       requestMatcher: requestMatcher,
       responseBuilder: responseBuilder,
       baseUrl: baseUrl,
+      responseInfo: responseInfo,
     );
     _addMock(data);
   }
@@ -144,6 +147,8 @@ class DeceiverBuilder {
         return responseBuilder(request);
       },
       baseUrl: isOwnBase ? base : null,
+      // The builder above wraps responseBuilder, so take its info here.
+      responseInfo: responseInfoOf(responseBuilder),
     );
   }
 

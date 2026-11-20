@@ -1,3 +1,22 @@
+## 0.5.0
+
+- `DeceiverController` listens to its `Deceiver`, so the panel also updates
+  for changes made directly on the `Deceiver` or from the Deceiver DevTools
+  extension. `dispose()` stops listening.
+- Every mock shows what it responds, such as `200 · JSON · 2 items`. Tap a
+  mock to see its status code, headers and body in a bottom sheet. Only the
+  switch toggles a mock now, tapping the row opens the details.
+- The mocks are listed in the order Deceiver looks for a match: the active
+  scenario first, then the base mocks, then the other scenarios collapsed.
+  A base mock overridden by the active scenario is marked `overridden`.
+- "Disable all" / "Enable all" in the panel turns every mock on or off.
+- Added `DeceiverController.scenarioRegistrations()`, `isOverridden()`,
+  `allMocks` and `setAllMocksEnabled()`.
+- The example app shows what Deceiver can do: a card per feature (response
+  helpers, path parameters, sequences, custom matchers, other APIs, slow
+  responses, passthrough), four scenarios, and switching environments.
+- Requires `deceiver` 0.5.0.
+
 ## 0.4.0
 
 - Added `DeceiverController.reset()`, optionally with a new `baseUrl`.
