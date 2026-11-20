@@ -41,7 +41,25 @@ void main() {
     expect(find.text('Only allow mocks'), findsOneWidget);
     expect(find.text('Base mocks'), findsOneWidget);
     expect(find.text('Scenario: error'), findsOneWidget);
-    expect(find.text('GET /users'), findsNWidgets(2));
+    expect(find.text('200 · JSON · 1 item'), findsOneWidget);
+    // The inactive scenario is collapsed.
+    expect(find.text('GET /users'), findsOneWidget);
+    expect(find.text('1 mocks, not active'), findsOneWidget);
+  });
+
+  testWidgets('lists the active scenario first and marks overridden mocks', (
+    tester,
+  ) async {
+    service.state = {...fakeState(), 'activeScenario': 'error'};
+    await pumpScreen(tester);
+
+    final scenarioTop = tester.getTopLeft(
+      find.text('Scenario: error (active)'),
+    );
+    final baseTop = tester.getTopLeft(find.text('Base mocks'));
+    expect(scenarioTop.dy, lessThan(baseTop.dy));
+    expect(find.text('sequence: 200 → 500'), findsOneWidget);
+    expect(find.text('200 · JSON · 1 item · overridden'), findsOneWidget);
   });
 
   testWidgets('toggling the global switch calls the app', (tester) async {
@@ -54,21 +72,52 @@ void main() {
     expect(controller.state?.enabled, isFalse);
   });
 
-  testWidgets('tapping a mock toggles it with a small switch', (tester) async {
+  testWidgets('the small switch toggles a mock', (tester) async {
     await pumpScreen(tester);
+    final mockSwitch = find.byType(Switch).last;
 
     final switchBox = find.ancestor(
-      of: find.byType(Switch).last,
+      of: mockSwitch,
       matching: find.byType(FittedBox),
     );
     expect(tester.getSize(switchBox).height, lessThan(24));
 
-    await tester.tap(find.text('GET /users').first);
+    await tester.tap(mockSwitch);
     await tester.pumpAndSettle();
 
     final (method, params) = service.calls.last;
     expect(method, 'setMockEnabled');
     expect(params, {'instance': '1', 'mock': '10', 'enabled': 'false'});
+  });
+
+  testWidgets('tapping a mock shows what it responds', (tester) async {
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('GET /users'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Details'), findsOneWidget);
+    expect(find.textContaining('Base mocks', findRichText: true), findsWidgets);
+    expect(find.text('Response body'), findsOneWidget);
+    expect(find.textContaining('"name": "Bilbo"'), findsOneWidget);
+    expect(service.calls.last.$1, isNot('setMockEnabled'));
+  });
+
+  testWidgets('shows the variants of a sequence', (tester) async {
+    service.state = {...fakeState(), 'activeScenario': 'error'};
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('GET /users').first);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Call 1: 200 · empty', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Call 2: 500 · error', findRichText: true),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows requests and their details', (tester) async {
@@ -93,15 +142,15 @@ void main() {
     service.requests = [fakeRequest(1)];
     await pumpScreen(tester);
 
-    expect(find.text('Request details'), findsOneWidget);
-    expect(find.text('Select a request'), findsOneWidget);
+    expect(find.text('Details'), findsOneWidget);
+    expect(find.text('Select a request or mock'), findsOneWidget);
 
     await tester.tap(find.text('GET https://api.x.com/users/1'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Clear selection'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Select a request'), findsOneWidget);
+    expect(find.text('Select a request or mock'), findsOneWidget);
   });
 
   testWidgets('the panes can be resized by dragging', (tester) async {

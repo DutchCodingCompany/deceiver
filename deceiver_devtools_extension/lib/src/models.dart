@@ -19,17 +19,64 @@ class MockInfo {
     required this.id,
     required this.description,
     required this.enabled,
+    this.baseUrl,
+    this.response,
   });
 
   factory MockInfo.fromJson(Map<String, Object?> json) => MockInfo(
     id: json['id'] as int,
     description: json['description'] as String,
     enabled: json['enabled'] as bool,
+    baseUrl: json['baseUrl'] as String?,
+    response: switch (json['response']) {
+      final Map<Object?, Object?> response => ResponseInfo.fromJson(
+        response.cast(),
+      ),
+      _ => null,
+    },
   );
 
   final int id;
   final String description;
   final bool enabled;
+
+  /// The URL of `on.at()` or a full URL path, or `null`.
+  final String? baseUrl;
+
+  /// What the mock responds.
+  final ResponseInfo? response;
+}
+
+/// What a mock responds, see `DeceiverResponseInfo`.
+class ResponseInfo {
+  ResponseInfo({
+    required this.kind,
+    required this.summary,
+    this.statusCode,
+    this.headers = const {},
+    this.body,
+    this.variants = const [],
+  });
+
+  factory ResponseInfo.fromJson(Map<String, Object?> json) => ResponseInfo(
+    kind: json['kind'] as String,
+    summary: json['summary'] as String,
+    statusCode: json['statusCode'] as int?,
+    headers: _headers(json['headers']),
+    body: json['body'] as String?,
+    variants: [
+      for (final variant in json['variants'] as List? ?? const [])
+        ResponseInfo.fromJson((variant as Map).cast()),
+    ],
+  );
+
+  /// json, error, empty, sequential, random or custom.
+  final String kind;
+  final String summary;
+  final int? statusCode;
+  final Map<String, String> headers;
+  final String? body;
+  final List<ResponseInfo> variants;
 }
 
 /// A scenario and its mocks.
@@ -78,6 +125,30 @@ class DeceiverState {
   final String? activeScenario;
   final List<MockInfo> mocks;
   final List<ScenarioInfo> scenarios;
+
+  ScenarioInfo? get active =>
+      scenarios.where((s) => s.name == activeScenario).firstOrNull;
+
+  /// The descriptions of the enabled mocks of the active scenario. Base mocks
+  /// with the same description are overridden while it is active.
+  Set<String> get overridingDescriptions => {
+    for (final mock in active?.mocks ?? const <MockInfo>[])
+      if (mock.enabled) mock.description,
+  };
+
+  /// The mock with [id] and where it is registered: `null` for the base
+  /// mocks, or the name of its scenario.
+  (MockInfo, String?)? findMock(int id) {
+    for (final mock in mocks) {
+      if (mock.id == id) return (mock, null);
+    }
+    for (final scenario in scenarios) {
+      for (final mock in scenario.mocks) {
+        if (mock.id == id) return (mock, scenario.name);
+      }
+    }
+    return null;
+  }
 }
 
 List<MockInfo> _mocks(Object? json) => [

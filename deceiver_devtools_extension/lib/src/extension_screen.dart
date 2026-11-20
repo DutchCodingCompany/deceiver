@@ -52,7 +52,7 @@ class ExtensionScreen extends StatelessWidget {
                     children: [
                       _MockList(controller: controller, state: state),
                       _RequestList(controller: controller),
-                      _RequestDetails(controller: controller),
+                      _Details(controller: controller),
                     ],
                   ),
                 ),
@@ -219,35 +219,52 @@ class _MockList extends StatelessWidget {
   }
 
   Widget _list() {
+    final active = state.active;
+    final overriding = state.overridingDescriptions;
     return ListView(
       children: [
-        const _SectionHeader('Base mocks'),
-        if (state.mocks.isEmpty)
-          const ListTile(dense: true, title: Text('No mocks')),
-        for (final mock in state.mocks) _mockTile(mock),
-        for (final scenario in state.scenarios) ...[
-          _SectionHeader(
-            scenario.name == state.activeScenario
-                ? 'Scenario: ${scenario.name} (active)'
-                : 'Scenario: ${scenario.name}',
-          ),
-          for (final mock in scenario.mocks) _mockTile(mock),
+        // The order in which Deceiver looks for a matching mock.
+        if (active != null) ...[
+          _SectionHeader('Scenario: ${active.name} (active)'),
+          if (active.mocks.isEmpty) _empty('No mocks in this scenario'),
+          for (final mock in active.mocks) _mockTile(mock),
         ],
+        const _SectionHeader('Base mocks'),
+        if (state.mocks.isEmpty) _empty('No mocks'),
+        for (final mock in state.mocks)
+          _mockTile(mock, overridden: overriding.contains(mock.description)),
+        for (final scenario in state.scenarios)
+          if (scenario.name != state.activeScenario)
+            ExpansionTile(
+              key: PageStorageKey('scenario ${scenario.name}'),
+              dense: true,
+              title: Text('Scenario: ${scenario.name}'),
+              subtitle: Text('${scenario.mocks.length} mocks, not active'),
+              children: [for (final mock in scenario.mocks) _mockTile(mock)],
+            ),
       ],
     );
   }
 
-  Widget _mockTile(MockInfo mock) {
+  Widget _empty(String text) => ListTile(dense: true, title: Text(text));
+
+  Widget _mockTile(MockInfo mock, {bool overridden = false}) {
     final onChanged = state.enabled
         ? (bool enabled) => controller.setMockEnabled(mock.id, enabled)
         : null;
     return ListTile(
       dense: true,
       visualDensity: VisualDensity.compact,
-      enabled: onChanged != null,
+      selected: mock.id == controller.selectedMockId,
       title: Text(mock.description),
+      subtitle: Text(
+        [
+          mock.response?.summary ?? 'custom response',
+          if (overridden) 'overridden',
+        ].join(' · '),
+      ),
       trailing: _SmallSwitch(value: mock.enabled, onChanged: onChanged),
-      onTap: onChanged == null ? null : () => onChanged(!mock.enabled),
+      onTap: () => controller.selectMock(mock.id),
     );
   }
 }
@@ -345,33 +362,41 @@ class _StatusLabel extends StatelessWidget {
   }
 }
 
-class _RequestDetails extends StatelessWidget {
-  const _RequestDetails({required this.controller});
+class _Details extends StatelessWidget {
+  const _Details({required this.controller});
 
   final ExtensionController controller;
 
   @override
   Widget build(BuildContext context) {
     final request = controller.selectedRequest;
+    final mockId = controller.selectedMockId;
+    final mock = mockId == null ? null : controller.state?.findMock(mockId);
     return DevToolsAreaPane(
       header: AreaPaneHeader(
-        title: const Text('Request details'),
+        title: const Text('Details'),
         actions: [
-          if (request != null)
+          if (request != null || mock != null)
             IconButton(
               tooltip: 'Clear selection',
               icon: const Icon(Icons.close),
-              onPressed: () => controller.selectRequest(null),
+              onPressed: () => controller.selectMock(null),
             ),
         ],
       ),
-      child: request == null
-          ? const Center(child: Text('Select a request'))
-          : _details(context, request),
+      child: switch ((request, mock)) {
+        (final request?, _) => _requestDetails(context, request),
+        (_, (final mock, final scenario)?) => _mockDetails(
+          context,
+          mock,
+          scenario,
+        ),
+        _ => const Center(child: Text('Select a request or mock')),
+      },
     );
   }
 
-  Widget _details(BuildContext context, RecordedRequest request) {
+  Widget _requestDetails(BuildContext context, RecordedRequest request) {
     return SelectionArea(
       child: ListView(
         padding: const EdgeInsets.all(defaultSpacing),
@@ -398,6 +423,65 @@ class _RequestDetails extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _mockDetails(BuildContext context, MockInfo mock, String? scenario) {
+    final state = controller.state!;
+    final overridden =
+        scenario == null &&
+        state.overridingDescriptions.contains(mock.description);
+    final response = mock.response;
+    return SelectionArea(
+      child: ListView(
+        padding: const EdgeInsets.all(defaultSpacing),
+        children: [
+          Text(mock.description, style: Theme.of(context).textTheme.titleSmall),
+          _Field(
+            'Registered in',
+            scenario == null
+                ? 'Base mocks'
+                : scenario == state.activeScenario
+                ? 'Scenario $scenario (active)'
+                : 'Scenario $scenario (not active)',
+          ),
+          if (mock.baseUrl case final baseUrl?) _Field('Base URL', baseUrl),
+          _Field(
+            'Enabled',
+            [
+              if (mock.enabled) 'yes' else 'no',
+              if (overridden) 'overridden by scenario ${state.activeScenario}',
+            ].join(', '),
+          ),
+          if (response == null)
+            const _Field('Response', 'custom response')
+          else
+            ..._responseDetails(response),
+        ],
+      ),
+    );
+  }
+
+  static List<Widget> _responseDetails(ResponseInfo response, [String? label]) {
+    final prefix = label ?? 'Response';
+    return [
+      _Field(prefix, response.summary),
+      if (response.kind == 'custom')
+        const _Note(
+          'A response builder of your own: what it returns is only known '
+          'when it runs. See the requests it answered.',
+        ),
+      if (response.statusCode != null) ...[
+        _Block('$prefix headers', _headers(response.headers)),
+        _Block('$prefix body', _pretty(response.body ?? '')),
+      ],
+      for (final (index, variant) in response.variants.indexed)
+        ..._responseDetails(
+          variant,
+          response.kind == 'sequential'
+              ? 'Call ${index + 1}'
+              : 'Option ${index + 1}',
+        ),
+    ];
   }
 
   static String _headers(Map<String, String> headers) =>
@@ -434,6 +518,20 @@ class _Field extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _Note extends StatelessWidget {
+  const _Note(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(text, style: Theme.of(context).textTheme.bodySmall),
     );
   }
 }

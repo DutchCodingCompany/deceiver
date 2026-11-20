@@ -117,6 +117,27 @@ void main() {
     expect(controller.selectedRequest, isNull);
   });
 
+  test('selecting a mock or a request deselects the other', () async {
+    service.requests = [fakeRequest(1)];
+    await controller.loadInstances();
+
+    controller.selectRequest(controller.requests.single);
+    controller.selectMock(10);
+    expect(controller.selectedRequest, isNull);
+    expect(controller.state?.findMock(10)?.$1.description, 'GET /users');
+
+    controller.selectRequest(controller.requests.single);
+    expect(controller.selectedMockId, isNull);
+  });
+
+  test('findMock tells where a mock is registered', () async {
+    await controller.loadInstances();
+
+    expect(controller.state?.findMock(10)?.$2, isNull);
+    expect(controller.state?.findMock(11)?.$2, 'error');
+    expect(controller.state?.findMock(99), isNull);
+  });
+
   test('shows the error of a failed call', () async {
     final failing = _FailingService();
     final controller = ExtensionController(failing);

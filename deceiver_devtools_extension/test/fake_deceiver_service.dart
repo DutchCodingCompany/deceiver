@@ -51,13 +51,56 @@ Map<String, Object?> fakeState({bool enabled = true}) => {
   'maxRecordedRequests': 2,
   'activeScenario': null,
   'mocks': [
-    {'id': 10, 'description': 'GET /users', 'enabled': true},
+    {
+      'id': 10,
+      'description': 'GET /users',
+      'enabled': true,
+      'baseUrl': null,
+      'response': {
+        'kind': 'json',
+        'summary': '200 · JSON · 1 item',
+        'statusCode': 200,
+        'headers': {'content-type': 'application/json'},
+        'body': '[{"name":"Bilbo"}]',
+        'variants': <Object?>[],
+      },
+    },
   ],
   'scenarios': [
     {
       'name': 'error',
       'mocks': [
-        {'id': 11, 'description': 'GET /users', 'enabled': true},
+        {
+          'id': 11,
+          'description': 'GET /users',
+          'enabled': true,
+          'baseUrl': null,
+          'response': {
+            'kind': 'sequential',
+            'summary': 'sequence: 200 → 500',
+            'statusCode': null,
+            'headers': <String, String>{},
+            'body': null,
+            'variants': [
+              {
+                'kind': 'empty',
+                'summary': '200 · empty',
+                'statusCode': 200,
+                'headers': <String, String>{},
+                'body': null,
+                'variants': <Object?>[],
+              },
+              {
+                'kind': 'error',
+                'summary': '500 · error',
+                'statusCode': 500,
+                'headers': <String, String>{},
+                'body': null,
+                'variants': <Object?>[],
+              },
+            ],
+          },
+        },
       ],
     },
   ],

@@ -27,6 +27,9 @@ class ExtensionController extends ChangeNotifier {
   /// The request shown in the details, if any.
   RecordedRequest? selectedRequest;
 
+  /// The id of the mock shown in the details, if any.
+  int? selectedMockId;
+
   /// The last error of a call to the app, shown until the next call.
   String? error;
 
@@ -66,6 +69,7 @@ class ExtensionController extends ChangeNotifier {
     ];
     final selectedId = keepSelection ? selectedRequest?.id : null;
     selectedRequest = requests.where((r) => r.id == selectedId).firstOrNull;
+    if (!keepSelection) selectedMockId = null;
   }
 
   Future<void> setEnabled(bool enabled) =>
@@ -91,6 +95,13 @@ class ExtensionController extends ChangeNotifier {
 
   void selectRequest(RecordedRequest? request) {
     selectedRequest = request;
+    selectedMockId = null;
+    notifyListeners();
+  }
+
+  void selectMock(int? id) {
+    selectedMockId = id;
+    selectedRequest = null;
     notifyListeners();
   }
 
