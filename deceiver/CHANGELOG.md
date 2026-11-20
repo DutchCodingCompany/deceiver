@@ -27,7 +27,8 @@
 - `DeceiverRecordedRequest` has the `response` and `duration` of the mock,
   the `timestamp`, and the `error` of strict mode or of a mock that threw.
   Requests are recorded when the mock has answered, so `deceiver.requests`
-  is in the order the requests were answered.
+  is in the order the requests were answered. Requests that are still being
+  answered during `clearRequests()` or `reset()` are not recorded.
 
 ## 0.4.0
 

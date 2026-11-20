@@ -148,6 +148,10 @@ class Deceiver {
   String? _activeScenario;
   final _requests = ListQueue<DeceiverRecordedRequest>();
 
+  /// Raised when the recorded requests are removed, so that requests that
+  /// were still being answered at that moment are not recorded afterwards.
+  var _requestsGeneration = 0;
+
   /// Creates a [DeceiverClient] that intercepts HTTP requests.
   ///
   /// If [client] is provided, it is used as the underlying real HTTP client
@@ -237,6 +241,7 @@ class Deceiver {
     _scenarios.clear();
     _activeScenario = null;
     _requests.clear();
+    _requestsGeneration++;
     _notifyListeners();
     postDevToolsRequestsCleared(this);
   }
@@ -250,7 +255,9 @@ class Deceiver {
   /// Each entry has the mock that answered it, or `null` if no mock matched,
   /// and the response of the mock.
   /// Keeps at most [DeceiverOptions.maxRecordedRequests] requests. Requests
-  /// sent while [enabled] is `false` or outside [baseUrl] are not recorded.
+  /// sent while [enabled] is `false` or outside [baseUrl] are not recorded,
+  /// nor requests that were still being answered when [clearRequests] or
+  /// [reset] was called.
   ///
   /// ```dart
   /// final posts = deceiver.requests.where(
@@ -263,10 +270,14 @@ class Deceiver {
   /// Removes all recorded [requests].
   void clearRequests() {
     _requests.clear();
+    _requestsGeneration++;
     postDevToolsRequestsCleared(this);
   }
 
-  void _record(DeceiverRecordedRequest recorded) {
+  /// Records [recorded], unless the requests were removed since
+  /// [generation].
+  void _record(DeceiverRecordedRequest recorded, int generation) {
+    if (generation != _requestsGeneration) return;
     final max = options.maxRecordedRequests;
     if (max <= 0) return;
     _requests.addLast(recorded);
@@ -373,6 +384,7 @@ class Deceiver {
     if (!enabled || !appliesTo(request.url)) return null;
 
     final timestamp = DateTime.now();
+    final generation = _requestsGeneration;
     final mock = _findMock(request);
     if (mock == null) {
       final error = onNoMock?.call();
@@ -383,6 +395,7 @@ class Deceiver {
           timestamp: timestamp,
           error: error,
         ),
+        generation,
       );
       if (error != null) throw error;
       return null;
@@ -399,6 +412,7 @@ class Deceiver {
           response: response,
           duration: stopwatch.elapsed,
         ),
+        generation,
       );
       return response;
     } catch (error) {
@@ -410,6 +424,7 @@ class Deceiver {
           duration: stopwatch.elapsed,
           error: error,
         ),
+        generation,
       );
       rethrow;
     }

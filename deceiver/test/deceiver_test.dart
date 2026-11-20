@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -1018,6 +1019,33 @@ void main() {
 
       expect(deceiver.requests, isEmpty);
     });
+
+    for (final (name, remove) in [
+      ('clearRequests', (Deceiver d) => d.clearRequests()),
+      ('reset', (Deceiver d) => d.reset()),
+    ]) {
+      test(
+        'does not record a request still being answered during $name',
+        () async {
+          final deceiver = Deceiver();
+          final answer = Completer<Response>();
+          deceiver.on.get('/slow', (req) => answer.future);
+          final client = deceiver.client();
+
+          final pending = client.get(Uri.parse('https://x.com/slow'));
+          await pumpEventQueue();
+          remove(deceiver);
+          answer.complete(Response('slow', 200));
+          await pending;
+
+          expect(deceiver.requests, isEmpty);
+
+          deceiver.on.get('/fast', (req) => Response('', 200));
+          await client.get(Uri.parse('https://x.com/fast'));
+          expect(deceiver.requests, hasLength(1));
+        },
+      );
+    }
   });
 
   group('listeners', () {

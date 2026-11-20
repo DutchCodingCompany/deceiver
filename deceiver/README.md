@@ -480,7 +480,8 @@ expect(posts.single.request.body, contains('Bilbo'));
 Deceiver keeps the last 100 requests. Change that with
 `DeceiverOptions(maxRecordedRequests: ...)`, or use `0` to record nothing.
 Requests sent while `enabled` is `false` are not recorded. Call
-`deceiver.clearRequests()` to empty the list.
+`deceiver.clearRequests()` to empty the list; requests that are still being
+answered at that moment are not recorded either.
 
 ### Resetting
 
