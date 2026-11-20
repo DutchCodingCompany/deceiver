@@ -33,7 +33,8 @@ migrate_working_dir/
 # FVM Version Cache
 .fvm/
 
-# Brainstorm mockups
+# Brainstorm mockups and design docs
 .superpowers/
+docs/superpowers/
 # Built by deceiver_devtools_extension, see its README
 deceiver/extension/devtools/build/
