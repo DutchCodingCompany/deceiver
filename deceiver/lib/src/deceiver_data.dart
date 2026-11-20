@@ -4,6 +4,7 @@ import 'package:http/http.dart';
 
 import 'deceiver_exception.dart';
 import 'deceiver_request_matchers.dart';
+import 'deceiver_response_info.dart';
 
 /// A function that builds a [Response] given a [Request].
 ///
@@ -30,7 +31,8 @@ class DeceiverData {
     required this.description,
     this._isEnabled = true,
     this.baseUrl,
-  });
+    DeceiverResponseInfo? responseInfo,
+  }) : responseInfo = responseInfo ?? responseInfoOf(responseBuilder);
 
   static int _nextId = 0;
   final int _id = _nextId++;
@@ -51,6 +53,12 @@ class DeceiverData {
 
   /// A human-readable description of this mock (e.g. "GET /users/{id}").
   final String description;
+
+  /// What this mock responds, for example to show it in a debug panel.
+  ///
+  /// Known for the response helpers such as `jsonResponse()`. Response
+  /// builders of your own are [DeceiverResponseKind.custom].
+  final DeceiverResponseInfo responseInfo;
 
   /// Whether this individual mock is active. Set to `false` to disable
   /// without removing the registration.

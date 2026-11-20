@@ -57,17 +57,30 @@ void main() {
       expect(state['enabled'], isTrue);
       expect(state['onlyAllowMocks'], isFalse);
       expect(state['activeScenario'], 'error');
-      expect(state['mocks'], [
-        {'id': isA<int>(), 'description': 'GET /users', 'enabled': true},
-      ]);
-      expect(state['scenarios'], [
-        {
-          'name': 'error',
-          'mocks': [
-            {'id': isA<int>(), 'description': 'GET /users', 'enabled': true},
-          ],
-        },
-      ]);
+      final mock = (state['mocks'] as List).single as Map;
+      expect(mock['id'], isA<int>());
+      expect(mock['description'], 'GET /users');
+      expect(mock['enabled'], isTrue);
+      final [scenario] = state['scenarios'] as List;
+      expect(scenario['name'], 'error');
+      final scenarioMock = (scenario['mocks'] as List).single as Map;
+      expect(scenarioMock['response']['summary'], '500 · error');
+    });
+
+    test('includes what each mock responds', () {
+      final deceiver = Deceiver();
+      deceiver.on.get('/users', jsonResponse(body: ['Bilbo']));
+
+      final mock = (call('getState', deceiver)['mocks'] as List).single as Map;
+
+      expect(mock['response'], {
+        'kind': 'json',
+        'summary': '200 · JSON · 1 item',
+        'statusCode': 200,
+        'headers': {'content-type': 'application/json'},
+        'body': '["Bilbo"]',
+        'variants': <Object?>[],
+      });
     });
 
     test('throws for an unknown instance', () {

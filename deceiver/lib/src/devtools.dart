@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import 'deceiver.dart';
 import 'deceiver_data.dart';
+import 'deceiver_response_info.dart';
 
 // The DevTools extension (deceiver_devtools_extension) talks to the app via
 // the `ext.deceiver.*` service extensions below, and listens to the
@@ -201,6 +202,17 @@ Map<String, Object?> _mockToJson(DeceiverData mock) => {
   'id': mockId(mock),
   'description': mock.description,
   'enabled': mock.isEnabled,
+  'baseUrl': mock.baseUrl?.toString(),
+  'response': _responseInfoToJson(mock.responseInfo),
+};
+
+Map<String, Object?> _responseInfoToJson(DeceiverResponseInfo info) => {
+  'kind': info.kind.name,
+  'summary': info.summary,
+  'statusCode': info.statusCode,
+  'headers': info.headers,
+  'body': info.body == null ? null : _body(utf8.encode(info.body!)),
+  'variants': info.variants.map(_responseInfoToJson).toList(),
 };
 
 /// A recorded request, as sent to DevTools.
