@@ -10,6 +10,8 @@
   `emptyResponse()`, the variants of `sequentialResponse()` and
   `randomResponse()`, or `custom` for a builder of your own. The DevTools
   extension shows it for every mock.
+- The example also covers path parameters, strict mode, base URLs and
+  multiple APIs, recorded requests, `reset()`, listeners and `responseInfo`.
 - `deceiver.addListener()` and `removeListener()`: get notified when
   `enabled`, `options`, the mocks, the scenarios, the active scenario or a
   mock's `isEnabled` change.

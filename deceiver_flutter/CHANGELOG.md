@@ -10,6 +10,9 @@
   scenario first, then the base mocks, then the other scenarios collapsed.
   A base mock overridden by the active scenario is marked `overridden`.
 - Added `DeceiverController.scenarioRegistrations()` and `isOverridden()`.
+- The example app shows what Deceiver can do: a card per feature (response
+  helpers, path parameters, sequences, custom matchers, other APIs, slow
+  responses, passthrough), four scenarios, and switching environments.
 - Requires `deceiver` 0.5.0.
 
 ## 0.4.0
