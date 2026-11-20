@@ -1,3 +1,18 @@
+## 0.5.0
+
+- Dart DevTools extension: a "deceiver" tab to turn mocks on and off,
+  switch strict mode and scenarios, and see the handled requests live,
+  including the response of the mock. Works without setup for every
+  `Deceiver` in an app that runs in debug or profile mode.
+- `Deceiver(name: ...)` names an instance in DevTools.
+- `deceiver.addListener()` and `removeListener()`: get notified when
+  `enabled`, `options`, the mocks, the scenarios, the active scenario or a
+  mock's `isEnabled` change.
+- `DeceiverRecordedRequest` has the `response` and `duration` of the mock,
+  the `timestamp`, and the `error` of strict mode or of a mock that threw.
+  Requests are recorded when the mock has answered, so `deceiver.requests`
+  is in the order the requests were answered.
+
 ## 0.4.0
 
 - `request.pathParameters` gives response builders the values of the

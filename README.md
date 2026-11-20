@@ -14,3 +14,5 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 
 - [deceiver](/deceiver)
 - [deceiver_flutter](/deceiver_flutter)
+- [deceiver_devtools_extension](/deceiver_devtools_extension) (the DevTools
+  extension, shipped inside `deceiver`)

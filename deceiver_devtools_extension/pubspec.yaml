@@ -1,0 +1,22 @@
+name: deceiver_devtools_extension
+description: The Dart DevTools extension of Deceiver. Built into deceiver/extension/devtools.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  devtools_extensions: ^0.5.1
+  flutter:
+    sdk: flutter
+  vm_service: ^15.0.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

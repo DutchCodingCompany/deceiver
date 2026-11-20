@@ -24,6 +24,8 @@ Deceiver brings the same ergonomic fake-response pattern to `package:http`.
 - Base URL and `on.at()` -- only mock requests to your own APIs, in every
   environment
 - Request history -- check which requests were made, for example in tests
+- DevTools extension -- toggle mocks and see the handled requests in Dart
+  DevTools while the app runs
 - Custom request matchers for advanced matching logic
 - Async response builders for simulating delays or conditional logic
 - Descriptive error messages when strict mode is enabled
@@ -455,9 +457,12 @@ await client.get(Uri.parse('https://api.example.com/posts')); // mocked
 
 ### Recorded requests
 
-`deceiver.requests` lists the requests Deceiver handled, oldest first, each
-with the mock that answered it (`null` if no mock matched). Use it to check
-which requests your code made:
+`deceiver.requests` lists the requests Deceiver handled, in the order they
+were answered. Each entry has the mock that answered it (`null` if no mock
+matched), the `response` of the mock with its `duration`, the `timestamp`,
+and the `error` when strict mode rejected the request or the mock threw.
+Responses of the real HTTP client are not recorded. Use it to check which
+requests your code made:
 
 ```dart
 await userRepository.createUser('Bilbo');
@@ -484,6 +489,33 @@ Pass `baseUrl` to change the base URL at the same time, see
 ```dart
 tearDown(deceiver.reset);
 ```
+
+### DevTools
+
+Deceiver comes with a [Dart DevTools](https://docs.flutter.dev/tools/devtools)
+extension. Open DevTools for an app that runs in debug or profile mode and
+uses Deceiver, and open the **deceiver** tab (enable it in DevTools'
+extensions menu the first time). There you can:
+
+- turn all mocks on or off, and switch strict mode
+- activate a scenario
+- turn individual mocks on or off, including scenario mocks
+- see the handled requests live: which mock answered, the status code,
+  duration, and request and response body
+
+Requests without a mock show as passthrough; their real response is in
+DevTools' Network tab. Mocked responses don't show up in the Network tab.
+
+No setup is needed: every `Deceiver` shows up in DevTools by itself. With
+more than one, give them a `name` to tell them apart:
+
+```dart
+final deceiver = Deceiver(name: 'Auth API');
+```
+
+Changes made in DevTools also show up in the `deceiver_flutter` panel, and
+the other way around. Listen to changes yourself with
+`deceiver.addListener()`.
 
 ### Debugging
 
@@ -520,7 +552,7 @@ for (final reg in deceiver.registrations) {
 | `DeceiverBuilder` | Fluent API accessed via `deceiver.on` for registering mocks. |
 | `DeceiverClient` | The `package:http` client returned by `deceiver.client()`. |
 | `DeceiverException` | Thrown in strict mode for unmatched requests. Extends `ClientException`. |
-| `DeceiverRecordedRequest` | An entry of `deceiver.requests`: the request and the mock that answered it. |
+| `DeceiverRecordedRequest` | An entry of `deceiver.requests`: the request, the mock that answered it and its response. |
 | `request.pathParameters` | Extension on `Request` with the values of the path placeholders. |
 | `DeceiverData` | A single mock registration with matcher, builder, and `isEnabled` flag. |
 | `DeceiverResponseBuilder` | Typedef: `FutureOr<Response> Function(Request)` |

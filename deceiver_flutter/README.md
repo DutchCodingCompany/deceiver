@@ -16,8 +16,9 @@ UI panel you can embed anywhere in your app.
 - **Scenarios** -- switch between named scenarios and toggle their mocks
 - **Per-mock toggles** -- enable/disable individual mock registrations
 - **Mock list** -- see all registered mocks with their descriptions and status
-- **Reactive** -- panel updates automatically when settings change through
-  the controller
+- **Reactive** -- panel updates automatically when settings change, also
+  when they change directly on the `Deceiver` or from the Deceiver
+  DevTools extension
 - **Material Design** -- built with
   [`material_ui`](https://pub.dev/packages/material_ui) and follows your
   app's theme
@@ -137,10 +138,14 @@ controller.addListener(() {
 });
 ```
 
-Changes made directly on the `Deceiver` (such as registering a mock while
-the panel is open, or setting `isEnabled` on a mock) don't notify the
-controller. Make changes through the controller while the panel is visible,
-or they only show up after the panel rebuilds.
+The controller also notifies its listeners for changes made directly on the
+`Deceiver` (such as registering a mock or setting `isEnabled` on a mock) and
+for changes made in the Deceiver DevTools extension. Call
+`controller.dispose()` when you no longer need it.
+
+No access to the panel in your app, for example before login? Use the
+Deceiver tab in Dart DevTools instead, see the
+[deceiver README](https://pub.dev/packages/deceiver#devtools).
 
 ### Panel layout
 

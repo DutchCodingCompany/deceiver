@@ -3,7 +3,7 @@ description: >-
   A Flutter debug control panel for the Deceiver HTTP mocking library.
   Toggle mocks on/off at runtime, switch between strict and passthrough
   modes, and manage individual mock registrations from a Material UI panel.
-version: 0.4.0
+version: 0.5.0
 repository: https://github.com/DutchCodingCompany/deceiver
 resolution: workspace
 topics:
@@ -19,7 +19,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  deceiver: ^0.4.0
+  deceiver: ^0.5.0
   material_ui: ^1.0.0
 
 dev_dependencies:

@@ -35,3 +35,5 @@ migrate_working_dir/
 
 # Brainstorm mockups
 .superpowers/
+# Built by deceiver_devtools_extension, see its README
+deceiver/extension/devtools/build/

@@ -1,3 +1,10 @@
+## 0.5.0
+
+- `DeceiverController` listens to its `Deceiver`, so the panel also updates
+  for changes made directly on the `Deceiver` or from the Deceiver DevTools
+  extension. `dispose()` stops listening.
+- Requires `deceiver` 0.5.0.
+
 ## 0.4.0
 
 - Added `DeceiverController.reset()`, optionally with a new `baseUrl`.
