@@ -41,6 +41,9 @@ void registerForDevTools(Deceiver deceiver) {
   _post('deceiver:instancesChanged', {});
 }
 
+/// Forgets all registered Deceivers. Only for tests.
+void resetDevToolsInstancesForTesting() => _instances.clear();
+
 /// The id of [deceiver] in DevTools, or `null` if it isn't registered.
 int? devToolsId(Deceiver deceiver) => _instanceIds[deceiver];
 
@@ -74,7 +77,7 @@ void _registerExtensions() {
   if (_extensionsRegistered) return;
   _extensionsRegistered = true;
 
-  for (final method in devToolsMethods) {
+  for (final method in devToolsMethods.keys) {
     developer.registerExtension('$_extensionPrefix$method', (_, params) async {
       try {
         final result = handleDevToolsCall(method, params);
@@ -89,18 +92,87 @@ void _registerExtensions() {
   }
 }
 
-/// The service extension methods, without the `ext.deceiver.` prefix.
-const devToolsMethods = [
-  'getInstances',
-  'getState',
-  'setEnabled',
-  'setOnlyAllowMocks',
-  'setActiveScenario',
-  'setMockEnabled',
-  'setAllMocksEnabled',
-  'getRequests',
-  'clearRequests',
-];
+/// The service extension methods, without the `ext.deceiver.` prefix, with
+/// their description and parameters. Returned by `ext.deceiver.help`.
+///
+/// Keep the README section "Controlling Deceiver from tools and AI agents"
+/// and skills/deceiver in sync with this.
+const devToolsMethods =
+    <String, ({String description, Map<String, String> params})>{
+      'help': (
+        description: 'Lists these methods, their parameters and the events.',
+        params: {},
+      ),
+      'getInstances': (
+        description: 'Lists the Deceivers in the app: id and name.',
+        params: {},
+      ),
+      'getState': (
+        description:
+            'The settings, the base mocks and the scenarios with their mocks. '
+            'Each mock has an id, description, enabled flag and response info.',
+        params: {},
+      ),
+      'setEnabled': (
+        description:
+            'Turns all mocking on or off. When off, every request goes to the '
+            'real server; the mocks keep their own enabled flag.',
+        params: {'enabled': 'true or false'},
+      ),
+      'setOnlyAllowMocks': (
+        description:
+            'Strict mode: when on, requests without a mock throw a '
+            'DeceiverException instead of going to the real server.',
+        params: {'enabled': 'true or false'},
+      ),
+      'setActiveScenario': (
+        description:
+            'Activates a scenario, whose mocks then override the base mocks. '
+            'Leave out scenario to deactivate.',
+        params: {'scenario': 'scenario name (optional)'},
+      ),
+      'setMockEnabled': (
+        description:
+            'Turns one mock on or off. Pass mock, or description with an '
+            'optional scenario.',
+        params: {
+          'enabled': 'true or false',
+          'mock': 'mock id from getState',
+          'description': 'mock description, such as "GET /users/{id}"',
+          'scenario':
+              'with description: the scenario of the mock (optional, default '
+              'the base mocks)',
+        },
+      ),
+      'setAllMocksEnabled': (
+        description:
+            'Turns every mock on or off, base and scenario mocks alike. For '
+            'example turn all off, then only the one you need on.',
+        params: {'enabled': 'true or false'},
+      ),
+      'getRequests': (
+        description:
+            'The handled requests, oldest first: method, url, headers, body, '
+            'the mock that answered (null: no mock), status code, response body, '
+            'duration and error.',
+        params: {},
+      ),
+      'clearRequests': (
+        description: 'Removes the recorded requests.',
+        params: {},
+      ),
+    };
+
+const _instanceParam =
+    'Every method except help and getInstances takes instance, the id '
+    'from getInstances. It may be left out when the app has one Deceiver.';
+
+const _events = {
+  'deceiver:instancesChanged': 'A Deceiver was created.',
+  'deceiver:changed': 'The settings or mocks of instance changed.',
+  'deceiver:request': 'instance handled request (as in getRequests).',
+  'deceiver:requestsCleared': 'The requests of instance were removed.',
+};
 
 /// Handles a call to the service extension `ext.deceiver.<method>`.
 ///
@@ -109,14 +181,27 @@ Map<String, Object?> handleDevToolsCall(
   String method,
   Map<String, String> params,
 ) {
-  if (method == 'getInstances') {
-    return {
-      'instances': [
-        for (final MapEntry(key: id, value: ref) in _instances.entries)
-          if (ref.target case final deceiver?)
+  switch (method) {
+    case 'help':
+      return {
+        'methods': {
+          for (final MapEntry(key: name, value: spec)
+              in devToolsMethods.entries)
+            'ext.deceiver.$name': {
+              'description': spec.description,
+              'params': spec.params,
+            },
+        },
+        'instance': _instanceParam,
+        'events': _events,
+      };
+    case 'getInstances':
+      return {
+        'instances': [
+          for (final (id, deceiver) in _living())
             {'id': id, 'name': deceiver.name ?? deceiver.baseUrl?.toString()},
-      ],
-    };
+        ],
+      };
   }
 
   final deceiver = _instance(params);
@@ -146,38 +231,116 @@ Map<String, Object?> handleDevToolsCall(
       deceiver.clearRequests();
       return {'requests': <Object?>[]};
     default:
-      throw ArgumentError.value(method, 'method', 'Unknown method');
+      throw ArgumentError(
+        'Unknown method $method. Call ext.deceiver.help for the methods.',
+      );
   }
   return stateToJson(deceiver);
 }
 
+List<(int, Deceiver)> _living() => [
+  for (final MapEntry(key: id, value: ref) in _instances.entries)
+    if (ref.target case final deceiver?) (id, deceiver),
+];
+
 Deceiver _instance(Map<String, String> params) {
-  final id = int.tryParse(params['instance'] ?? '');
-  final deceiver = _instances[id]?.target;
-  if (deceiver == null) {
-    throw ArgumentError.value(params['instance'], 'instance', 'No Deceiver');
+  final living = _living();
+  final param = params['instance'];
+  if (param == null || param.isEmpty) {
+    return switch (living) {
+      [(_, final deceiver)] => deceiver,
+      [] => throw ArgumentError('The app has not created a Deceiver yet.'),
+      _ => throw ArgumentError(
+        'The app has ${living.length} Deceivers, pass instance: '
+        '${_describeInstances(living)}.',
+      ),
+    };
   }
-  return deceiver;
+  final id = int.tryParse(param);
+  for (final (livingId, deceiver) in living) {
+    if (livingId == id) return deceiver;
+  }
+  throw ArgumentError(
+    'No Deceiver with instance $param. Instances: '
+    '${_describeInstances(living)}.',
+  );
 }
+
+String _describeInstances(List<(int, Deceiver)> living) => living
+    .map((e) => '${e.$1} (${e.$2.name ?? e.$2.baseUrl ?? 'no name'})')
+    .join(', ');
 
 bool _bool(Map<String, String> params, String name) => switch (params[name]) {
   'true' => true,
   'false' => false,
-  final value => throw ArgumentError.value(value, name, 'Must be true/false'),
+  final value => throw ArgumentError(
+    'Parameter $name must be true or false, got ${value ?? 'nothing'}.',
+  ),
 };
 
 DeceiverData _mock(Deceiver deceiver, Map<String, String> params) {
-  final id = int.tryParse(params['mock'] ?? '');
-  final mocks = [
-    ...deceiver.registrations,
-    for (final name in deceiver.scenarios)
-      ...?deceiver.scenarioRegistrations(name),
-  ];
-  for (final mock in mocks) {
-    if (mockId(mock) == id) return mock;
+  if (params['mock'] case final idParam?) {
+    final id = int.tryParse(idParam);
+    for (final mock in _allMocks(deceiver)) {
+      if (mockId(mock) == id) return mock;
+    }
+    throw ArgumentError('No mock with id $idParam. Call getState for the ids.');
   }
-  throw ArgumentError.value(params['mock'], 'mock', 'No mock');
+
+  final description = params['description']?.trim();
+  if (description == null || description.isEmpty) {
+    throw ArgumentError('Pass mock (an id) or description.');
+  }
+  final scenario = params['scenario'];
+  final List<DeceiverData> scope;
+  if (scenario == null || scenario.isEmpty) {
+    scope = deceiver.registrations;
+  } else {
+    scope =
+        deceiver.scenarioRegistrations(scenario) ??
+        (throw ArgumentError(
+          'No scenario $scenario. Scenarios: ${deceiver.scenarios.join(', ')}.',
+        ));
+  }
+  final matches = [
+    for (final mock in scope)
+      if (mock.description.toLowerCase() == description.toLowerCase()) mock,
+  ];
+  final where = scenario == null || scenario.isEmpty
+      ? 'the base mocks'
+      : 'scenario $scenario';
+  return switch (matches) {
+    [final mock] => mock,
+    [] => throw ArgumentError(
+      'No mock "$description" in $where. Mocks there: '
+      '${scope.map((m) => '"${m.description}"').join(', ')}.'
+      '${_inScenarios(deceiver, description)}',
+    ),
+    _ => throw ArgumentError(
+      '${matches.length} mocks "$description" in $where, pass mock with one '
+      'of the ids: ${matches.map(mockId).join(', ')}.',
+    ),
+  };
 }
+
+/// A hint naming the scenarios that have a mock with [description].
+String _inScenarios(Deceiver deceiver, String description) {
+  final scenarios = [
+    for (final name in deceiver.scenarios)
+      if (deceiver
+          .scenarioRegistrations(name)!
+          .any((m) => m.description.toLowerCase() == description.toLowerCase()))
+        name,
+  ];
+  if (scenarios.isEmpty) return '';
+  return ' It is in scenario ${scenarios.join(', ')}: pass scenario.';
+}
+
+List<DeceiverData> _allMocks(Deceiver deceiver) => [
+  ...deceiver.registrations,
+  for (final name in deceiver.scenarios)
+    ...?deceiver.scenarioRegistrations(name),
+];
 
 /// The settings and mocks of [deceiver], as sent to DevTools.
 Map<String, Object?> stateToJson(Deceiver deceiver) => {

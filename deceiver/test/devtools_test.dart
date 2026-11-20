@@ -252,6 +252,142 @@ void main() {
       expect(events, isEmpty);
     });
   });
+
+  group('help', () {
+    test('lists every method with its parameters, and the events', () {
+      final help = handleDevToolsCall('help', {});
+
+      final methods = help['methods'] as Map;
+      expect(
+        methods.keys,
+        devToolsMethods.keys.map((name) => 'ext.deceiver.$name'),
+      );
+      expect(
+        (methods['ext.deceiver.setMockEnabled'] as Map)['params'],
+        containsPair('description', isA<String>()),
+      );
+      expect(help['instance'], contains('may be left out'));
+      expect(help['events'], contains('deceiver:request'));
+    });
+  });
+
+  group('instance', () {
+    setUp(resetDevToolsInstancesForTesting);
+
+    test('may be left out with one Deceiver', () {
+      final deceiver = Deceiver();
+
+      handleDevToolsCall('setEnabled', {'enabled': 'false'});
+
+      expect(deceiver.enabled, isFalse);
+    });
+
+    test('is required with more Deceivers, listing them', () {
+      Deceiver(name: 'API');
+      Deceiver(name: 'Auth');
+
+      expect(
+        () => handleDevToolsCall('getState', {}),
+        throwsA(
+          isArgumentError.having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('2 Deceivers'),
+              contains('(API)'),
+              contains('(Auth)'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('explains when the app has no Deceiver yet', () {
+      expect(
+        () => handleDevToolsCall('getState', {}),
+        throwsA(
+          isArgumentError.having(
+            (e) => e.message,
+            'message',
+            contains('not created a Deceiver'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('setMockEnabled by description', () {
+    late Deceiver deceiver;
+
+    setUp(() {
+      resetDevToolsInstancesForTesting();
+      deceiver = Deceiver();
+      deceiver.on.get('/users', jsonResponse());
+      deceiver.on.get('/posts', jsonResponse());
+      deceiver.scenario('error', (on) {
+        on.get('/users', errorResponse(500));
+        on.get('/orders', errorResponse(500));
+      });
+    });
+
+    Matcher error(String text) => throwsA(
+      isArgumentError.having((e) => e.message, 'message', contains(text)),
+    );
+
+    test('finds a base mock, ignoring case', () {
+      handleDevToolsCall('setMockEnabled', {
+        'description': 'get /users',
+        'enabled': 'false',
+      });
+
+      expect(deceiver.registrations.first.isEnabled, isFalse);
+      expect(deceiver.scenarioRegistrations('error')!.first.isEnabled, isTrue);
+    });
+
+    test('finds a scenario mock with scenario', () {
+      handleDevToolsCall('setMockEnabled', {
+        'description': 'GET /users',
+        'scenario': 'error',
+        'enabled': 'false',
+      });
+
+      expect(deceiver.registrations.first.isEnabled, isTrue);
+      expect(deceiver.scenarioRegistrations('error')!.first.isEnabled, isFalse);
+    });
+
+    test('lists the mocks and hints at the scenario when not found', () {
+      expect(
+        () => handleDevToolsCall('setMockEnabled', {
+          'description': 'GET /orders',
+          'enabled': 'false',
+        }),
+        allOf(error('"GET /posts"'), error('in scenario error: pass scenario')),
+      );
+    });
+
+    test('asks for an id when the description is ambiguous', () {
+      deceiver.on.get('/users', errorResponse(404));
+
+      expect(
+        () => handleDevToolsCall('setMockEnabled', {
+          'description': 'GET /users',
+          'enabled': 'false',
+        }),
+        error('2 mocks "GET /users"'),
+      );
+    });
+
+    test('explains an unknown scenario', () {
+      expect(
+        () => handleDevToolsCall('setMockEnabled', {
+          'description': 'GET /users',
+          'scenario': 'nope',
+          'enabled': 'false',
+        }),
+        error('Scenarios: error'),
+      );
+    });
+  });
 }
 
 int _id(Deceiver deceiver) => devToolsId(deceiver)!;
