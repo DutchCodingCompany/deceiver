@@ -5,6 +5,11 @@
   including the response of the mock. Works without setup for every
   `Deceiver` in an app that runs in debug or profile mode.
 - `Deceiver(name: ...)` names an instance in DevTools.
+- `DeceiverData.responseInfo` tells what a mock responds: the status code,
+  headers and body of `jsonResponse()`, `errorResponse()` and
+  `emptyResponse()`, the variants of `sequentialResponse()` and
+  `randomResponse()`, or `custom` for a builder of your own. The DevTools
+  extension shows it for every mock.
 - `deceiver.addListener()` and `removeListener()`: get notified when
   `enabled`, `options`, the mocks, the scenarios, the active scenario or a
   mock's `isEnabled` change.

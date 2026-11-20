@@ -149,7 +149,8 @@ Deceiver tab in Dart DevTools instead, see the
 
 ### Panel layout
 
-The panel displays up to four sections:
+The panel displays up to five sections. The mocks are listed in the order
+Deceiver looks for a match: the active scenario first, then the base mocks.
 
 **Global Settings**
 - **Mocks enabled** -- master switch for all mocks
@@ -165,13 +166,25 @@ The panel displays up to four sections:
 
 **Base Mocks**
 - Each registered mock shown with its description (e.g. `GET /users`)
-- Individual toggle switch per mock
-- Status icon and label (Enabled / Disabled)
+  and what it responds (e.g. `200 · JSON · 2 items`)
+- Individual toggle switch per mock and a status icon
+- `overridden` when an enabled mock of the active scenario has the same
+  description
 - Count badge in the section header
+
+**Other Scenarios** (only shown when there are inactive scenarios)
+- One collapsed tile per scenario; expand it to see and toggle its mocks
+  before you activate it
+
+Tap a mock to see its details in a bottom sheet: where it's registered, its
+base URL, and the status code, headers and body it responds, or each
+response of a `sequentialResponse()` or `randomResponse()`. Mocks with a
+response builder of your own show `custom response`, because what they
+return is only known when they run.
 
 ## API Reference
 
 | Class | Description |
 |---|---|
-| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
+| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `scenarioRegistrations()`, `isOverridden()`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
 | `DeceiverPanel` | Material-styled widget that renders the full control panel. Takes a `DeceiverController`. |

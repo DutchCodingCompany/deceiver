@@ -19,7 +19,7 @@ void main() {
 
     tester.state<ScaffoldState>(find.byType(Scaffold)).openEndDrawer();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('error'));
+    await tester.tap(find.widgetWithText(RadioListTile<String?>, 'error'));
     await tester.pumpAndSettle();
     tester.state<ScaffoldState>(find.byType(Scaffold)).closeEndDrawer();
     await tester.pumpAndSettle();

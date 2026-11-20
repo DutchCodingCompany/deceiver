@@ -499,7 +499,8 @@ extensions menu the first time). There you can:
 
 - turn all mocks on or off, and switch strict mode
 - activate a scenario
-- turn individual mocks on or off, including scenario mocks
+- turn individual mocks on or off, including scenario mocks, and see what
+  each mock responds (status code, headers and body)
 - see the handled requests live: which mock answered, the status code,
   duration, and request and response body
 
@@ -516,6 +517,22 @@ final deceiver = Deceiver(name: 'Auth API');
 Changes made in DevTools also show up in the `deceiver_flutter` panel, and
 the other way around. Listen to changes yourself with
 `deceiver.addListener()`.
+
+### Inspecting mocks
+
+`mock.responseInfo` tells what a mock responds, as far as known when it was
+registered. The response helpers describe their status code, headers and
+body; `sequentialResponse()` and `randomResponse()` list their `variants`.
+Response builders of your own are `DeceiverResponseKind.custom`. The panel
+of `deceiver_flutter` and the DevTools extension use it to show each mock:
+
+```dart
+deceiver.on.get('/users', jsonResponse(body: [{'name': 'Bilbo'}]));
+
+final info = deceiver.registrations.single.responseInfo;
+print(info.summary); // 200 · JSON · 1 item
+print(info.body); // [{"name":"Bilbo"}]
+```
 
 ### Debugging
 
@@ -554,7 +571,8 @@ for (final reg in deceiver.registrations) {
 | `DeceiverException` | Thrown in strict mode for unmatched requests. Extends `ClientException`. |
 | `DeceiverRecordedRequest` | An entry of `deceiver.requests`: the request, the mock that answered it and its response. |
 | `request.pathParameters` | Extension on `Request` with the values of the path placeholders. |
-| `DeceiverData` | A single mock registration with matcher, builder, and `isEnabled` flag. |
+| `DeceiverData` | A single mock registration with matcher, builder, `responseInfo`, and `isEnabled` flag. |
+| `DeceiverResponseInfo` | What a mock responds: `kind`, `statusCode`, `headers`, `body`, `variants` and a one-line `summary`. |
 | `DeceiverResponseBuilder` | Typedef: `FutureOr<Response> Function(Request)` |
 | `DeceiverRequestMatcher` | Typedef: `bool Function(Request)` |
 | `jsonResponse()` | Helper: builds a JSON response with `content-type: application/json`. |

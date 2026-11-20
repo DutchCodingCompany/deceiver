@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:deceiver/deceiver.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -6,8 +8,10 @@ import 'deceiver_controller.dart';
 /// A Material-styled control panel for managing [Deceiver] mock settings.
 ///
 /// Displays global toggles (enabled, onlyAllowMocks), a scenario selector,
-/// the mocks of the active scenario and a scrollable list of base mocks,
-/// each with an individual toggle switch.
+/// and the mocks in the order Deceiver looks for a match: the mocks of the
+/// active scenario, the base mocks, and the other scenarios (collapsed). Each
+/// mock shows what it responds and has its own toggle switch. Tap a mock to
+/// see its details.
 ///
 /// Embed this widget in a debug drawer, settings page, or any route:
 ///
@@ -38,6 +42,10 @@ class DeceiverPanel extends StatelessWidget {
           final scenarios = controller.scenarios;
           final activeScenario = controller.activeScenario;
           final scenarioRegistrations = controller.activeScenarioRegistrations;
+          final otherScenarios = [
+            for (final name in scenarios)
+              if (name != activeScenario) name,
+          ];
 
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -101,7 +109,11 @@ class DeceiverPanel extends StatelessWidget {
                   const _EmptyState('No mocks in this scenario.')
                 else
                   for (final mock in scenarioRegistrations)
-                    _MockListTile(mock: mock, controller: controller),
+                    _MockListTile(
+                      mock: mock,
+                      controller: controller,
+                      scenario: activeScenario,
+                    ),
               ],
 
               // -- Base Mocks --
@@ -112,6 +124,32 @@ class DeceiverPanel extends StatelessWidget {
               else
                 for (final mock in registrations)
                   _MockListTile(mock: mock, controller: controller),
+
+              // -- Other Scenarios --
+              if (otherScenarios.isNotEmpty) ...[
+                const Divider(),
+                _SectionHeader(
+                  title: 'Other Scenarios',
+                  count: otherScenarios.length,
+                ),
+                for (final name in otherScenarios)
+                  ExpansionTile(
+                    key: PageStorageKey('deceiver scenario $name'),
+                    title: Text(name),
+                    subtitle: Text(
+                      '${controller.scenarioRegistrations(name).length} '
+                      'mocks, not active',
+                    ),
+                    children: [
+                      for (final mock in controller.scenarioRegistrations(name))
+                        _MockListTile(
+                          mock: mock,
+                          controller: controller,
+                          scenario: name,
+                        ),
+                    ],
+                  ),
+              ],
             ],
           );
         },
@@ -287,37 +325,226 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _MockListTile extends StatelessWidget {
-  const _MockListTile({required this.mock, required this.controller});
+  const _MockListTile({
+    required this.mock,
+    required this.controller,
+    this.scenario,
+  });
 
   final DeceiverData mock;
   final DeceiverController controller;
+
+  /// The scenario the mock belongs to, or `null` for a base mock.
+  final String? scenario;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isEnabled = mock.isEnabled;
+    final overridden = controller.isOverridden(mock);
 
-    return SwitchListTile(
+    return ListTile(
       title: Text(
         mock.description,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          // 'monospace' only exists on Android.
-          fontFamilyFallback: const ['Menlo', 'Courier'],
+        style: _monospace.copyWith(
           color: isEnabled
               ? theme.colorScheme.onSurface
               : theme.colorScheme.onSurface.withValues(alpha: 0.5),
         ),
       ),
-      subtitle: Text(isEnabled ? 'Enabled' : 'Disabled'),
-      secondary: Icon(
+      subtitle: Text(
+        [
+          mock.responseInfo.summary,
+          if (!isEnabled) 'disabled',
+          if (overridden) 'overridden',
+        ].join(' · '),
+      ),
+      leading: Icon(
         isEnabled ? Icons.check_circle_outline : Icons.cancel_outlined,
         color: isEnabled
             ? theme.colorScheme.primary
             : theme.colorScheme.onSurface.withValues(alpha: 0.38),
       ),
-      value: isEnabled,
-      onChanged: (value) => controller.toggleMock(mock, enabled: value),
+      trailing: Switch(
+        value: isEnabled,
+        onChanged: (value) => controller.toggleMock(mock, enabled: value),
+      ),
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (context) => _MockDetails(
+          mock: mock,
+          controller: controller,
+          scenario: scenario,
+        ),
+      ),
+    );
+  }
+}
+
+// 'monospace' only exists on Android.
+const _monospace = TextStyle(
+  fontFamily: 'monospace',
+  fontFamilyFallback: ['Menlo', 'Courier'],
+);
+
+/// What a mock responds, shown in a bottom sheet.
+class _MockDetails extends StatelessWidget {
+  const _MockDetails({
+    required this.mock,
+    required this.controller,
+    required this.scenario,
+  });
+
+  final DeceiverData mock;
+  final DeceiverController controller;
+  final String? scenario;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final scenario = this.scenario;
+          return ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  mock.description,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                subtitle: Text(
+                  scenario == null
+                      ? 'Base mock'
+                      : scenario == controller.activeScenario
+                      ? 'Scenario $scenario (active)'
+                      : 'Scenario $scenario (not active)',
+                ),
+                value: mock.isEnabled,
+                onChanged: (value) =>
+                    controller.toggleMock(mock, enabled: value),
+              ),
+              if (controller.isOverridden(mock))
+                _Field(
+                  'Overridden',
+                  'by scenario ${controller.activeScenario}',
+                ),
+              if (mock.baseUrl case final baseUrl?)
+                _Field('Base URL', '$baseUrl'),
+              ..._response(mock.responseInfo, 'Response'),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  static List<Widget> _response(DeceiverResponseInfo info, String label) => [
+    _Field(label, info.summary),
+    if (info.kind == DeceiverResponseKind.custom)
+      const _Note(
+        'A response builder of your own: what it returns is only known when '
+        'it runs.',
+      ),
+    if (info.statusCode != null) ...[
+      if (info.headers.isNotEmpty)
+        _Block(
+          '$label headers',
+          [
+            for (final MapEntry(:key, :value) in info.headers.entries)
+              '$key: $value',
+          ].join('\n'),
+        ),
+      if (info.body case final body?) _Block('$label body', _pretty(body)),
+    ],
+    for (final (index, variant) in info.variants.indexed)
+      ..._response(
+        variant,
+        info.kind == DeceiverResponseKind.sequential
+            ? 'Call ${index + 1}'
+            : 'Option ${index + 1}',
+      ),
+  ];
+
+  static String _pretty(String body) {
+    try {
+      return const JsonEncoder.withIndent('  ').convert(jsonDecode(body));
+    } on FormatException {
+      return body;
+    }
+  }
+}
+
+class _Field extends StatelessWidget {
+  const _Field(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Note extends StatelessWidget {
+  const _Note(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+    );
+  }
+}
+
+class _Block extends StatelessWidget {
+  const _Block(this.label, this.content);
+
+  final String label;
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(label, style: theme.textTheme.labelLarge),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: SelectableText(content, style: _monospace),
+          ),
+        ],
+      ),
     );
   }
 }

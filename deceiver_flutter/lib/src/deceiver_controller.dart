@@ -78,6 +78,23 @@ class DeceiverController extends ChangeNotifier {
     return deceiver.scenarioRegistrations(name) ?? const [];
   }
 
+  /// The mocks of the scenario with [name], or an empty list if there is no
+  /// such scenario.
+  List<DeceiverData> scenarioRegistrations(String name) =>
+      deceiver.scenarioRegistrations(name) ?? const [];
+
+  /// Whether [mock] is a base mock that an enabled mock of the active
+  /// scenario with the same [DeceiverData.description] overrides.
+  ///
+  /// This compares descriptions, so it doesn't detect overrides between mocks
+  /// registered with `on.match()`.
+  bool isOverridden(DeceiverData mock) {
+    if (!registrations.contains(mock)) return false;
+    return activeScenarioRegistrations.any(
+      (m) => m.isEnabled && m.description == mock.description,
+    );
+  }
+
   /// Activates the scenario with the given [name].
   ///
   /// Scenario mocks take priority over base mocks while active.
