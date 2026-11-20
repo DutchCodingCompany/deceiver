@@ -455,6 +455,9 @@ await client.get(Uri.parse('https://api.example.com/users')); // real
 await client.get(Uri.parse('https://api.example.com/posts')); // mocked
 ```
 
+Turn every mock on or off at once, base and scenario mocks alike, with
+`deceiver.setAllMocksEnabled(false)`. Then turn on only the ones you need.
+
 ### Recorded requests
 
 `deceiver.requests` lists the requests Deceiver handled, in the order they
@@ -501,6 +504,8 @@ extensions menu the first time). There you can:
 - activate a scenario
 - turn individual mocks on or off, including scenario mocks, and see what
   each mock responds (status code, headers and body)
+- turn all mocks off at once ("Disable all"), to then turn on only the one
+  you need
 - see the handled requests live: which mock answered, the status code,
   duration, and request and response body
 

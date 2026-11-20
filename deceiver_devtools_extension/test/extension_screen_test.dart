@@ -90,6 +90,24 @@ void main() {
     expect(params, {'instance': '1', 'mock': '10', 'enabled': 'false'});
   });
 
+  testWidgets('Disable all and Enable all toggle every mock', (tester) async {
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('Disable all'));
+    await tester.pumpAndSettle();
+
+    final (method, params) = service.calls.last;
+    expect(method, 'setAllMocksEnabled');
+    expect(params, {'instance': '1', 'enabled': 'false'});
+    expect(controller.state!.allMocks.any((m) => m.enabled), isFalse);
+    expect(find.text('Enable all'), findsOneWidget);
+
+    await tester.tap(find.text('Enable all'));
+    await tester.pumpAndSettle();
+
+    expect(controller.state!.allMocks.every((m) => m.enabled), isTrue);
+  });
+
   testWidgets('tapping a mock shows what it responds', (tester) async {
     await pumpScreen(tester);
 

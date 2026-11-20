@@ -143,6 +143,18 @@ void main() {
       expect(deceiver.scenarioRegistrations('s')!.single.isEnabled, isFalse);
     });
 
+    test('setAllMocksEnabled toggles every mock', () {
+      final deceiver = Deceiver();
+      deceiver.on.get('/users', jsonResponse());
+      deceiver.scenario('s', (on) => on.get('/posts', jsonResponse()));
+
+      final state = call('setAllMocksEnabled', deceiver, {'enabled': 'false'});
+
+      expect(deceiver.registrations.single.isEnabled, isFalse);
+      expect(deceiver.scenarioRegistrations('s')!.single.isEnabled, isFalse);
+      expect(((state['mocks'] as List).single as Map)['enabled'], isFalse);
+    });
+
     test('tells DevTools that the settings changed', () {
       final deceiver = Deceiver();
       events.clear();

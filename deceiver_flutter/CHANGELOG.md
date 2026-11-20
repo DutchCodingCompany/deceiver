@@ -9,7 +9,9 @@
 - The mocks are listed in the order Deceiver looks for a match: the active
   scenario first, then the base mocks, then the other scenarios collapsed.
   A base mock overridden by the active scenario is marked `overridden`.
-- Added `DeceiverController.scenarioRegistrations()` and `isOverridden()`.
+- "Disable all" / "Enable all" in the panel turns every mock on or off.
+- Added `DeceiverController.scenarioRegistrations()`, `isOverridden()`,
+  `allMocks` and `setAllMocksEnabled()`.
 - The example app shows what Deceiver can do: a card per feature (response
   helpers, path parameters, sequences, custom matchers, other APIs, slow
   responses, passthrough), four scenarios, and switching environments.

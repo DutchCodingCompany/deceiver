@@ -5,6 +5,9 @@
   including the response of the mock. Works without setup for every
   `Deceiver` in an app that runs in debug or profile mode.
 - `Deceiver(name: ...)` names an instance in DevTools.
+- `deceiver.setAllMocksEnabled()` turns every mock on or off, base and
+  scenario mocks alike, for example to then turn on only the one you need.
+  The DevTools extension has a "Disable all" / "Enable all" button.
 - `DeceiverData.responseInfo` tells what a mock responds: the status code,
   headers and body of `jsonResponse()`, `errorResponse()` and
   `emptyResponse()`, the variants of `sequentialResponse()` and

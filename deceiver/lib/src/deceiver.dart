@@ -189,6 +189,26 @@ class Deceiver {
     _notifyListeners();
   }
 
+  /// Sets [DeceiverData.isEnabled] of every mock: the base mocks and the
+  /// mocks of all scenarios. Notifies the listeners once.
+  ///
+  /// For example, turn all mocks off and then only the one you need on:
+  ///
+  /// ```dart
+  /// deceiver.setAllMocksEnabled(false);
+  /// deceiver.registrations.first.isEnabled = true;
+  /// ```
+  void setAllMocksEnabled(bool enabled) {
+    var changed = false;
+    for (final mock in [
+      ..._data,
+      for (final mocks in _scenarios.values) ...mocks,
+    ]) {
+      changed = setMockEnabledQuietly(mock, enabled) || changed;
+    }
+    if (changed) _notifyListeners();
+  }
+
   /// Returns the list of base mock definitions.
   List<DeceiverData> get registrations => List.unmodifiable(_data);
 

@@ -35,6 +35,23 @@ class FakeDeceiverService implements DeceiverService {
         return {'requests': <Object?>[]};
       case 'setEnabled':
         state = {...state, 'enabled': params['enabled'] == 'true'};
+      case 'setAllMocksEnabled':
+        final enabled = params['enabled'] == 'true';
+        Map<String, Object?> withEnabled(Object? mock) => {
+          ...(mock as Map<String, Object?>),
+          'enabled': enabled,
+        };
+        state = {
+          ...state,
+          'mocks': (state['mocks'] as List).map(withEnabled).toList(),
+          'scenarios': [
+            for (final scenario in state['scenarios'] as List)
+              {
+                ...(scenario as Map<String, Object?>),
+                'mocks': (scenario['mocks'] as List).map(withEnabled).toList(),
+              },
+          ],
+        };
       case 'setActiveScenario':
         state = {...state, 'activeScenario': params['scenario']};
     }

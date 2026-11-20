@@ -577,6 +577,32 @@ void main() {
       expect(controller.isOverridden(users), isFalse);
     });
 
+    test('setAllMocksEnabled toggles base and scenario mocks', () {
+      var notified = 0;
+      controller.addListener(() => notified++);
+
+      controller.setAllMocksEnabled(false);
+
+      expect(notified, 1);
+      expect(controller.allMocks, hasLength(4));
+      expect(controller.allMocks.any((m) => m.isEnabled), isFalse);
+    });
+
+    testWidgets('the Disable all button turns every mock off', (tester) async {
+      await pumpPanel(tester);
+
+      await tester.tap(find.text('Disable all'));
+      await tester.pump();
+
+      expect(controller.allMocks.any((m) => m.isEnabled), isFalse);
+      expect(find.text('Enable all'), findsOneWidget);
+
+      await tester.tap(find.text('Enable all'));
+      await tester.pump();
+
+      expect(controller.allMocks.every((m) => m.isEnabled), isTrue);
+    });
+
     test('scenarioRegistrations returns the mocks of any scenario', () {
       expect(controller.scenarioRegistrations('flaky'), hasLength(1));
       expect(controller.scenarioRegistrations('unknown'), isEmpty);

@@ -212,8 +212,19 @@ class _MockList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final anyEnabled = state.allMocks.any((m) => m.enabled);
     return DevToolsAreaPane(
-      header: const AreaPaneHeader(title: Text('Mocks')),
+      header: AreaPaneHeader(
+        title: const Text('Mocks'),
+        actions: [
+          TextButton(
+            onPressed: state.allMocks.isEmpty || !state.enabled
+                ? null
+                : () => controller.setAllMocksEnabled(!anyEnabled),
+            child: Text(anyEnabled ? 'Disable all' : 'Enable all'),
+          ),
+        ],
+      ),
       child: _list(),
     );
   }

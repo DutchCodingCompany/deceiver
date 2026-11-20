@@ -85,6 +85,10 @@ class ExtensionController extends ChangeNotifier {
   Future<void> setMockEnabled(int mockId, bool enabled) =>
       _setState('setMockEnabled', {'mock': '$mockId', 'enabled': '$enabled'});
 
+  /// Turns every mock on or off, base and scenario mocks alike.
+  Future<void> setAllMocksEnabled(bool enabled) =>
+      _setState('setAllMocksEnabled', {'enabled': '$enabled'});
+
   Future<void> clearRequests() => _run(() async {
     final id = selectedInstance;
     if (id == null) return;

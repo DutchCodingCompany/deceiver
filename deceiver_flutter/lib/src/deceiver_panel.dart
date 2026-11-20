@@ -42,6 +42,8 @@ class DeceiverPanel extends StatelessWidget {
           final scenarios = controller.scenarios;
           final activeScenario = controller.activeScenario;
           final scenarioRegistrations = controller.activeScenarioRegistrations;
+          final allMocks = controller.allMocks;
+          final anyMockEnabled = allMocks.any((m) => m.isEnabled);
           final otherScenarios = [
             for (final name in scenarios)
               if (name != activeScenario) name,
@@ -69,6 +71,18 @@ class DeceiverPanel extends StatelessWidget {
                 ),
                 value: controller.onlyAllowMocks,
                 onChanged: (value) => controller.onlyAllowMocks = value,
+              ),
+              ListTile(
+                title: const Text('All mocks'),
+                subtitle: const Text(
+                  'Turn every mock on or off, including scenario mocks',
+                ),
+                trailing: TextButton(
+                  onPressed: allMocks.isEmpty
+                      ? null
+                      : () => controller.setAllMocksEnabled(!anyMockEnabled),
+                  child: Text(anyMockEnabled ? 'Disable all' : 'Enable all'),
+                ),
               ),
 
               // -- Scenarios --

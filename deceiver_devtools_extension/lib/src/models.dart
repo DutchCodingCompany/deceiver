@@ -126,6 +126,12 @@ class DeceiverState {
   final List<MockInfo> mocks;
   final List<ScenarioInfo> scenarios;
 
+  /// All mocks: the base mocks and those of every scenario.
+  Iterable<MockInfo> get allMocks => [
+    ...mocks,
+    for (final scenario in scenarios) ...scenario.mocks,
+  ];
+
   ScenarioInfo? get active =>
       scenarios.where((s) => s.name == activeScenario).firstOrNull;
 

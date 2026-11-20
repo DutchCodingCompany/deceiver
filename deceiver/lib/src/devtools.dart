@@ -97,6 +97,7 @@ const devToolsMethods = [
   'setOnlyAllowMocks',
   'setActiveScenario',
   'setMockEnabled',
+  'setAllMocksEnabled',
   'getRequests',
   'clearRequests',
 ];
@@ -137,6 +138,8 @@ Map<String, Object?> handleDevToolsCall(
       }
     case 'setMockEnabled':
       _mock(deceiver, params).isEnabled = _bool(params, 'enabled');
+    case 'setAllMocksEnabled':
+      deceiver.setAllMocksEnabled(_bool(params, 'enabled'));
     case 'getRequests':
       return {'requests': deceiver.requests.map(requestToJson).toList()};
     case 'clearRequests':

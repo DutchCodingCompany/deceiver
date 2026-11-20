@@ -61,6 +61,16 @@ class DeceiverController extends ChangeNotifier {
     mock.isEnabled = enabled;
   }
 
+  /// All mocks: the base mocks and the mocks of every scenario.
+  List<DeceiverData> get allMocks => [
+    ...registrations,
+    for (final name in scenarios) ...scenarioRegistrations(name),
+  ];
+
+  /// Sets [DeceiverData.isEnabled] of every mock, base and scenario mocks
+  /// alike. See [Deceiver.setAllMocksEnabled].
+  void setAllMocksEnabled(bool enabled) => deceiver.setAllMocksEnabled(enabled);
+
   // ---------------------------------------------------------------------------
   // Scenarios
   // ---------------------------------------------------------------------------

@@ -78,6 +78,14 @@ class DeceiverData {
 /// A unique id of [mock] within this isolate, used by DevTools.
 int mockId(DeceiverData mock) => mock._id;
 
+/// Sets [DeceiverData.isEnabled] of [mock] without calling its callback.
+/// Returns whether it changed.
+bool setMockEnabledQuietly(DeceiverData mock, bool enabled) {
+  if (mock._isEnabled == enabled) return false;
+  mock._isEnabled = enabled;
+  return true;
+}
+
 /// Sets the callback that is called when [DeceiverData.isEnabled] of [mock]
 /// changes.
 void setMockOnChanged(DeceiverData mock, void Function() onChanged) {

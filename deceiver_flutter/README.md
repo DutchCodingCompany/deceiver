@@ -14,7 +14,8 @@ UI panel you can embed anywhere in your app.
 - **Global toggle** -- enable/disable all mocks with a single switch
 - **Strict mode toggle** -- switch `onlyAllowMocks` on/off at runtime
 - **Scenarios** -- switch between named scenarios and toggle their mocks
-- **Per-mock toggles** -- enable/disable individual mock registrations
+- **Per-mock toggles** -- enable/disable individual mock registrations, or
+  all of them at once with "Disable all" / "Enable all"
 - **Mock list** -- see all registered mocks with their descriptions and status
 - **Reactive** -- panel updates automatically when settings change, also
   when they change directly on the `Deceiver` or from the Deceiver
@@ -155,6 +156,8 @@ Deceiver looks for a match: the active scenario first, then the base mocks.
 **Global Settings**
 - **Mocks enabled** -- master switch for all mocks
 - **Only allow mocks** -- when on, unmatched requests throw errors
+- **All mocks** -- "Disable all" / "Enable all" sets every mock's own
+  toggle, so you can turn them all off and then only one on
 
 **Scenarios** (only shown when scenarios are defined)
 - **None (base only)** -- deactivates any active scenario
@@ -186,5 +189,5 @@ return is only known when they run.
 
 | Class | Description |
 |---|---|
-| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `scenarioRegistrations()`, `isOverridden()`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
+| `DeceiverController` | `ChangeNotifier` wrapping a `Deceiver` instance. Exposes `enabled`, `onlyAllowMocks`, `registrations`, `toggleMock()`, `scenarios`, `activeScenario`, `activeScenarioRegistrations`, `scenarioRegistrations()`, `isOverridden()`, `allMocks`, `setAllMocksEnabled()`, `activateScenario()`, `deactivateScenario()`, and `reset()`. |
 | `DeceiverPanel` | Material-styled widget that renders the full control panel. Takes a `DeceiverController`. |

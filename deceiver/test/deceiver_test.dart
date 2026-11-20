@@ -1062,6 +1062,25 @@ void main() {
       expect(notified, 4);
     });
 
+    test('setAllMocksEnabled sets base and scenario mocks, notifying once', () {
+      deceiver.on.get('/users', jsonResponse());
+      deceiver.on.get('/posts', jsonResponse());
+      deceiver.scenario('s', (on) => on.get('/users', errorResponse(500)));
+      notified = 0;
+
+      deceiver.setAllMocksEnabled(false);
+
+      expect(notified, 1);
+      expect(deceiver.registrations.map((m) => m.isEnabled), [false, false]);
+      expect(deceiver.scenarioRegistrations('s')!.single.isEnabled, isFalse);
+
+      deceiver.setAllMocksEnabled(false);
+      expect(notified, 1);
+
+      deceiver.registrations.first.isEnabled = true;
+      expect(notified, 2);
+    });
+
     test('are notified on reset', () {
       deceiver.reset();
 
