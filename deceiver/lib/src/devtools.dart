@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -21,6 +22,7 @@ var _nextInstanceId = 0;
 final _requestIds = Expando<int>();
 var _nextRequestId = 0;
 var _extensionsRegistered = false;
+final _changedPending = <int>{};
 
 /// Whether DevTools listens to events. Replaced in tests.
 bool Function() devToolsListening = () => developer.extensionStreamHasListener;
@@ -48,9 +50,16 @@ void resetDevToolsInstancesForTesting() => _instances.clear();
 int? devToolsId(Deceiver deceiver) => _instanceIds[deceiver];
 
 /// Tells DevTools that the settings of [deceiver] changed.
+///
+/// Changes in a row, such as registering all mocks at startup, are sent as
+/// one event, because DevTools loads the whole state for each event.
 void postDevToolsChanged(Deceiver deceiver) {
   final id = _instanceIds[deceiver];
-  if (id != null) _post('deceiver:changed', {'instance': id});
+  if (id == null || !devToolsListening() || !_changedPending.add(id)) return;
+  scheduleMicrotask(() {
+    _changedPending.remove(id);
+    _post('deceiver:changed', {'instance': id});
+  });
 }
 
 /// Tells DevTools that [deceiver] recorded [recorded].

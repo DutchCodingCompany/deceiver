@@ -155,15 +155,40 @@ void main() {
       expect(((state['mocks'] as List).single as Map)['enabled'], isFalse);
     });
 
-    test('tells DevTools that the settings changed', () {
+    test('tells DevTools that the settings changed', () async {
       final deceiver = Deceiver();
       events.clear();
 
       deceiver.enabled = false;
+      await pumpEventQueue();
 
       final (kind, data) = events.single;
       expect(kind, 'deceiver:changed');
       expect(data, {'instance': _id(deceiver)});
+    });
+
+    test('sends one event for changes in a row', () async {
+      final deceiver = Deceiver();
+      final other = Deceiver();
+      events.clear();
+
+      for (var i = 0; i < 50; i++) {
+        deceiver.on.get('/users/$i', jsonResponse());
+      }
+      deceiver.enabled = false;
+      other.enabled = false;
+      await pumpEventQueue();
+
+      expect(events.map((e) => e.$1), ['deceiver:changed', 'deceiver:changed']);
+      expect(events.map((e) => e.$2), [
+        {'instance': _id(deceiver)},
+        {'instance': _id(other)},
+      ]);
+
+      deceiver.enabled = true;
+      await pumpEventQueue();
+
+      expect(events, hasLength(3));
     });
   });
 
