@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:devtools_app_shared/ui.dart';
 import 'package:flutter/material.dart';
 
 import 'extension_controller.dart';
@@ -34,31 +35,26 @@ class ExtensionScreen extends StatelessWidget {
               const Expanded(child: _NoDeceiver())
             else ...[
               _Toolbar(controller: controller, state: state),
-              const Divider(height: 1),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      width: 320,
-                      child: _MockList(controller: controller, state: state),
-                    ),
-                    const VerticalDivider(width: 1),
-                    Expanded(
-                      flex: 3,
-                      child: _RequestList(controller: controller),
-                    ),
-                    if (controller.selectedRequest case final request?) ...[
-                      const VerticalDivider(width: 1),
-                      Expanded(
-                        flex: 2,
-                        child: _RequestDetails(
-                          request: request,
-                          onClose: () => controller.selectRequest(null),
-                        ),
-                      ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    densePadding,
+                    0,
+                    densePadding,
+                    densePadding,
+                  ),
+                  // The details pane is always there, so the sizes the user
+                  // dragged the panes to are kept.
+                  child: SplitPane(
+                    axis: Axis.horizontal,
+                    initialFractions: const [0.25, 0.45, 0.3],
+                    minSizes: const [180, 240, 180],
+                    children: [
+                      _MockList(controller: controller, state: state),
+                      _RequestList(controller: controller),
+                      _RequestDetails(controller: controller),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -194,6 +190,13 @@ class _MockList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return DevToolsAreaPane(
+      header: const AreaPaneHeader(title: Text('Mocks')),
+      child: _list(),
+    );
+  }
+
+  Widget _list() {
     return ListView(
       children: [
         const _SectionHeader('Base mocks'),
@@ -251,45 +254,33 @@ class _RequestList extends StatelessWidget {
   Widget build(BuildContext context) {
     // Newest first.
     final requests = controller.requests.reversed.toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
-          child: Row(
-            children: [
-              Text(
-                'Requests (${requests.length})',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: requests.isEmpty ? null : controller.clearRequests,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Clear'),
-              ),
-            ],
+    return DevToolsAreaPane(
+      header: AreaPaneHeader(
+        title: Text('Requests (${requests.length})'),
+        actions: [
+          TextButton.icon(
+            onPressed: requests.isEmpty ? null : controller.clearRequests,
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Clear'),
           ),
-        ),
-        Expanded(
-          child: requests.isEmpty
-              ? const Center(child: Text('No requests yet'))
-              : ListView.builder(
-                  itemCount: requests.length,
-                  itemBuilder: (context, index) {
-                    final request = requests[index];
-                    return ListTile(
-                      dense: true,
-                      selected: request.id == controller.selectedRequest?.id,
-                      leading: _StatusLabel(request),
-                      title: Text('${request.method} ${request.url}'),
-                      subtitle: Text(_summary(request)),
-                      onTap: () => controller.selectRequest(request),
-                    );
-                  },
-                ),
-        ),
-      ],
+        ],
+      ),
+      child: requests.isEmpty
+          ? const Center(child: Text('No requests yet'))
+          : ListView.builder(
+              itemCount: requests.length,
+              itemBuilder: (context, index) {
+                final request = requests[index];
+                return ListTile(
+                  dense: true,
+                  selected: request.id == controller.selectedRequest?.id,
+                  leading: _StatusLabel(request),
+                  title: Text('${request.method} ${request.url}'),
+                  subtitle: Text(_summary(request)),
+                  onTap: () => controller.selectRequest(request),
+                );
+              },
+            ),
     );
   }
 
@@ -328,32 +319,39 @@ class _StatusLabel extends StatelessWidget {
 }
 
 class _RequestDetails extends StatelessWidget {
-  const _RequestDetails({required this.request, required this.onClose});
+  const _RequestDetails({required this.controller});
 
-  final RecordedRequest request;
-  final VoidCallback onClose;
+  final ExtensionController controller;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final request = controller.selectedRequest;
+    return DevToolsAreaPane(
+      header: AreaPaneHeader(
+        title: const Text('Request details'),
+        actions: [
+          if (request != null)
+            IconButton(
+              tooltip: 'Clear selection',
+              icon: const Icon(Icons.close),
+              onPressed: () => controller.selectRequest(null),
+            ),
+        ],
+      ),
+      child: request == null
+          ? const Center(child: Text('Select a request'))
+          : _details(context, request),
+    );
+  }
+
+  Widget _details(BuildContext context, RecordedRequest request) {
     return SelectionArea(
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(defaultSpacing),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${request.method} ${request.url}',
-                  style: textTheme.titleSmall,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Close',
-                icon: const Icon(Icons.close),
-                onPressed: onClose,
-              ),
-            ],
+          Text(
+            '${request.method} ${request.url}',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
           _Field('Time', _time(request.timestamp)),
           _Field(
@@ -381,7 +379,7 @@ class _RequestDetails extends StatelessWidget {
 
   static String _pretty(String body) {
     try {
-      return const JsonEncoder.withIndent('  ').convert(jsonDecode(body));
+      return FormattedJson.encoder.convert(jsonDecode(body));
     } on FormatException {
       return body;
     }
@@ -434,7 +432,7 @@ class _Block extends StatelessWidget {
             color: theme.colorScheme.surfaceContainerHighest,
             child: Text(
               content.isEmpty ? '(empty)' : content,
-              style: const TextStyle(fontFamily: 'monospace'),
+              style: theme.fixedFontStyle,
             ),
           ),
         ],
