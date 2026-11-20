@@ -1,4 +1,7 @@
 import 'package:devtools_extensions/devtools_extensions.dart';
+// devtools_app_shared still builds on package:flutter/material.dart, so its
+// theme and widgets don't work with package:material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import 'src/vm_deceiver_service.dart';
