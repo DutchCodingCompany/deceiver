@@ -62,7 +62,7 @@ them.
   "baseUrl": null,
   "response": {
     "kind": "json",
-    "summary": "200 · JSON · 2 items",
+    "summary": "200 · JSON · 1 item",
     "statusCode": 200,
     "headers": {"content-type": "application/json"},
     "body": "[{\"id\":1,\"name\":\"Bilbo\"}]",
@@ -79,8 +79,9 @@ them.
   `sequential` and `random` (with `variants`, one per response), or `custom`
   (a builder of the app's own: what it returns is only known when it runs; see
   `getRequests` after it answered).
-- `id`s are unique within the app run, not stable across restarts. Prefer
-  `description`.
+- `id`s are unique within the app run, but a mock gets a new one when the
+  app registers it again (after `reset()`, or when it redefines a scenario)
+  and after a restart. Prefer `description`.
 
 ## Request
 
@@ -124,9 +125,9 @@ params) and a message that says what to pass, for example:
 - `The app has not created a Deceiver yet.`
 - `No scenario defined with this name. Available: empty, error`
 
-A method that doesn't exist at all (`Unknown method`/method not found) means
-the extensions aren't registered: no Deceiver created yet, a release build,
-or another isolate.
+A VM service error `Method not found` (code `-32601`) for an
+`ext.deceiver.*` method means the extensions aren't registered: no Deceiver
+created yet, a release build, or another isolate.
 
 ## Events
 

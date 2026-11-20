@@ -127,8 +127,10 @@ the next person or test doesn't start from a surprising state:
 - `setEnabled`, `setOnlyAllowMocks` and `setActiveScenario` (empty when it
   was `null`) to their old values.
 - The mocks: `setAllMocksEnabled {enabled: "true"}`, then `setMockEnabled`
-  `{enabled: "false"}` with the `mock` id of each mock that was off at the
-  start (ids stay the same until the app restarts).
+  `{enabled: "false"}` with the `description` (and `scenario`) of each mock
+  that was off at the start. Don't rely on the `mock` ids of the first
+  `getState`: they change when the app registers its mocks again, for example
+  after `reset()` when it switches environments.
 - Compare a final `getState` with the first one.
 
 A hot restart also resets everything, to what the code registers. If you
@@ -137,8 +139,9 @@ undo it.
 
 ## When it doesn't work
 
-- **`Unknown method ext.deceiver...`**: the app hasn't created a `Deceiver`
-  yet (they're often created lazily, at first use), it's a release build, or
+- **`Method not found` (error -32601) for `ext.deceiver...`**: the
+  extensions aren't registered. The app hasn't created a `Deceiver` yet
+  (they're often created lazily, at first use), it's a release build, or
   you're on the wrong isolate. Use the app a bit and retry, check the build
   mode and the isolate.
 - **Flutter web**: the extensions are only registered when the debugger is

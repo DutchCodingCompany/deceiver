@@ -559,16 +559,21 @@ The app also posts events on the `Extension` stream:
 `deceiver:instancesChanged`, `deceiver:changed`, `deceiver:request` and
 `deceiver:requestsCleared`.
 
-For example, to only let `GET /users` fail with the `error` scenario and
-check that the app called it:
+For example, to only let `GET /users` fail with the `error` scenario, while
+the other requests keep their base mocks, and check that the app called it:
+activate the scenario and turn off its other mocks (here `GET /posts`).
+Those endpoints fall back to their base mock.
 
 ```text
-ext.deceiver.setAllMocksEnabled  {enabled: "false"}
 ext.deceiver.setActiveScenario   {scenario: "error"}
-ext.deceiver.setMockEnabled      {description: "GET /users", scenario: "error", enabled: "true"}
+ext.deceiver.setMockEnabled      {description: "GET /posts", scenario: "error", enabled: "false"}
 ... use the app ...
 ext.deceiver.getRequests         → requests[].mock.description == "GET /users", statusCode 500
 ```
+
+`setAllMocksEnabled {enabled: "false"}` also turns off the base mocks: then
+only the mocks you turn on again answer, and every other request goes to the
+real server (or fails in strict mode).
 
 These methods and their parameters stay compatible within a minor version.
 
